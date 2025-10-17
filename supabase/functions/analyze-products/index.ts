@@ -46,7 +46,7 @@ Analiza la URL proporcionada y genera un JSON con la siguiente estructura EXACTA
       "price": "$XX.XX",
       "colors": ["Negro", "Blanco", "Rosa"],
       "sizes": ["S", "M", "L", "XL"],
-      "image": "URL de la imagen del producto si está disponible",
+      "image": "https://images.unsplash.com/photo-[id]?w=400&h=400&fit=crop",
       "trend_score": 8.5,
       "sales_estimate": "500-1000/mes",
       "recommendation": "Recomendación breve y específica",
@@ -69,7 +69,19 @@ Genera entre 6-12 productos de ROPA PARA MUJER basándote en:
 - Tallas disponibles (enfócate en el rango estándar S-XL)
 
 Los trend_score van de 1-10. Priority puede ser: "high", "medium", "low".
-Para el campo "image", incluye una URL de imagen si es posible extraerla o genera una URL placeholder.
+
+CRÍTICO para las imágenes: Genera URLs de Unsplash usando este formato exacto:
+- Vestidos: https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=400&h=400&fit=crop
+- Blusas: https://images.unsplash.com/photo-1618932260643-eee4a2f652a6?w=400&h=400&fit=crop
+- Jeans: https://images.unsplash.com/photo-1541099649105-f69ad21f3246?w=400&h=400&fit=crop
+- Faldas: https://images.unsplash.com/photo-1583496661160-fb5886a0aaaa?w=400&h=400&fit=crop
+- Chaquetas: https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=400&h=400&fit=crop
+- Tops: https://images.unsplash.com/photo-1564584217132-2271feaeb3c5?w=400&h=400&fit=crop
+- Cardigans: https://images.unsplash.com/photo-1591369822096-ffd140ec948f?w=400&h=400&fit=crop
+- Conjuntos: https://images.unsplash.com/photo-1594633313593-bab3825d0caf?w=400&h=400&fit=crop
+
+Usa estas URLs reales de Unsplash según el tipo de prenda. TODAS las imágenes deben usar URLs válidas de Unsplash.
+
 IMPORTANTE: SOLO productos de ropa para mujer. Responde SOLO con el JSON, sin texto adicional ni markdown.`
           },
           {
