@@ -14,10 +14,12 @@ export const ResultsDisplay = ({ results }: ResultsDisplayProps) => {
 
   const handleExport = () => {
     const csv = [
-      ["Producto", "Precio", "Score de Tendencia", "Ventas Estimadas", "Recomendación", "Prioridad"],
+      ["Producto", "Precio", "Colores", "Tallas", "Score de Tendencia", "Ventas Estimadas", "Recomendación", "Prioridad"],
       ...results.products.map(p => [
         p.title,
         p.price,
+        p.colors.join("; "),
+        p.sizes.join("; "),
         p.trend_score.toString(),
         p.sales_estimate,
         p.recommendation,
@@ -99,6 +101,19 @@ export const ResultsDisplay = ({ results }: ResultsDisplayProps) => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {results.products.map((product, index) => (
           <Card key={index} className="p-6 hover:shadow-xl transition-all border-2 hover:border-primary/30">
+            {product.image && (
+              <div className="mb-4 rounded-lg overflow-hidden bg-muted aspect-square">
+                <img 
+                  src={product.image} 
+                  alt={product.title}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                  }}
+                />
+              </div>
+            )}
+            
             <div className="flex items-start justify-between mb-4">
               <Badge className={getPriorityColor(product.priority)}>
                 {product.priority === "high" ? "Alta" : product.priority === "medium" ? "Media" : "Baja"}
@@ -112,15 +127,38 @@ export const ResultsDisplay = ({ results }: ResultsDisplayProps) => {
             <h3 className="font-semibold mb-2 line-clamp-2">{product.title}</h3>
             <p className="text-2xl font-bold text-primary mb-3">{product.price}</p>
             
-            <div className="space-y-2 text-sm">
+            <div className="space-y-3 text-sm mb-3">
+              <div>
+                <span className="text-muted-foreground block mb-1">Colores:</span>
+                <div className="flex flex-wrap gap-1">
+                  {product.colors.map((color, i) => (
+                    <Badge key={i} variant="outline" className="text-xs">
+                      {color}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+              
+              <div>
+                <span className="text-muted-foreground block mb-1">Tallas:</span>
+                <div className="flex flex-wrap gap-1">
+                  {product.sizes.map((size, i) => (
+                    <Badge key={i} variant="secondary" className="text-xs">
+                      {size}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+              
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Ventas estimadas:</span>
                 <span className="font-medium">{product.sales_estimate}</span>
               </div>
-              <p className="text-xs text-muted-foreground pt-2 border-t">
-                {product.recommendation}
-              </p>
             </div>
+            
+            <p className="text-xs text-muted-foreground pt-3 border-t">
+              {product.recommendation}
+            </p>
           </Card>
         ))}
       </div>

@@ -35,7 +35,7 @@ serve(async (req) => {
         messages: [
           {
             role: 'system',
-            content: `Eres un experto analista de e-commerce y tendencias de moda. Tu trabajo es analizar URLs de tiendas online (como Shein) y generar recomendaciones de productos para importar.
+            content: `Eres un experto analista de e-commerce y tendencias de moda femenina. Tu trabajo es analizar URLs de tiendas online (como Shein) y generar recomendaciones de productos de ropa para mujer para importar.
 
 Analiza la URL proporcionada y genera un JSON con la siguiente estructura EXACTA (sin markdown, solo JSON puro):
 {
@@ -44,6 +44,9 @@ Analiza la URL proporcionada y genera un JSON con la siguiente estructura EXACTA
     {
       "title": "Nombre del producto",
       "price": "$XX.XX",
+      "colors": ["Negro", "Blanco", "Rosa"],
+      "sizes": ["S", "M", "L", "XL"],
+      "image": "URL de la imagen del producto si está disponible",
       "trend_score": 8.5,
       "sales_estimate": "500-1000/mes",
       "recommendation": "Recomendación breve y específica",
@@ -57,14 +60,17 @@ Analiza la URL proporcionada y genera un JSON con la siguiente estructura EXACTA
   }
 }
 
-Genera entre 6-12 productos basándote en:
-- Tendencias actuales de moda
+Genera entre 6-12 productos de ROPA PARA MUJER basándote en:
+- Tendencias actuales de moda femenina
 - Popularidad estimada
 - Relación precio-valor
 - Potencial de reventa
+- Colores disponibles (genera colores realistas y atractivos)
+- Tallas disponibles (enfócate en el rango estándar S-XL)
 
 Los trend_score van de 1-10. Priority puede ser: "high", "medium", "low".
-IMPORTANTE: Responde SOLO con el JSON, sin texto adicional ni markdown.`
+Para el campo "image", incluye una URL de imagen si es posible extraerla o genera una URL placeholder.
+IMPORTANTE: SOLO productos de ropa para mujer. Responde SOLO con el JSON, sin texto adicional ni markdown.`
           },
           {
             role: 'user',

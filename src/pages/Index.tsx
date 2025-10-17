@@ -10,6 +10,9 @@ export interface AnalysisResult {
   products: {
     title: string;
     price: string;
+    colors: string[];
+    sizes: string[];
+    image?: string;
     trend_score: number;
     sales_estimate: string;
     recommendation: string;
