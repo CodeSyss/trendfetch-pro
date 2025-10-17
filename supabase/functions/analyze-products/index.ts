@@ -23,6 +23,25 @@ serve(async (req) => {
       throw new Error('LOVABLE_API_KEY not configured');
     }
 
+    // Obtén y sanitiza HTML de la página para extraer imágenes reales
+    const pageResponse = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+        'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8'
+      }
+    });
+    if (!pageResponse.ok) {
+      throw new Error(`No se pudo obtener la página (${pageResponse.status})`);
+    }
+    const rawHtml = await pageResponse.text();
+    const sanitizedHtml = rawHtml
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<!--[\s\S]*?-->/g, ' ')
+      .replace(/\s+/g, ' ')
+      .slice(0, 180000);
+    const baseUrl = new URL(url).origin;
+
     // Análisis con IA usando Lovable AI
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
@@ -30,23 +49,23 @@ serve(async (req) => {
         'Authorization': `Bearer ${LOVABLE_API_KEY}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          {
-            role: 'system',
-            content: `Eres un experto analista de e-commerce y tendencias de moda femenina. Tu trabajo es analizar URLs de tiendas online (como Shein) y generar recomendaciones de productos de ropa para mujer para importar.
-
-Analiza la URL proporcionada y genera un JSON con la siguiente estructura EXACTA (sin markdown, solo JSON puro):
+        body: JSON.stringify({
+          model: 'google/gemini-2.5-flash',
+          messages: [
+            {
+              role: 'system',
+              content: `Eres un experto analista de e-commerce y tendencias de moda femenina.
+Tu tarea: EXTRAER productos de la PÁGINA proporcionada y enriquecerlos (sin inventar imágenes).
+Devuelve SOLO JSON puro con esta estructura EXACTA:
 {
   "url": "url-analizada",
   "products": [
     {
       "title": "Nombre del producto",
       "price": "$XX.XX",
-      "colors": ["Negro", "Blanco", "Rosa"],
-      "sizes": ["S", "M", "L", "XL"],
-      "image": "https://images.unsplash.com/photo-[id]?w=400&h=400&fit=crop",
+      "colors": ["..."],
+      "sizes": ["..."],
+      "image": "https://dominio.com/imagen.jpg",
       "trend_score": 8.5,
       "sales_estimate": "500-1000/mes",
       "recommendation": "Recomendación breve y específica",
@@ -59,38 +78,27 @@ Analiza la URL proporcionada y genera un JSON con la siguiente estructura EXACTA
     "recommended_import": 6
   }
 }
-
-Genera entre 6-12 productos de ROPA PARA MUJER basándote en:
-- Tendencias actuales de moda femenina
-- Popularidad estimada
-- Relación precio-valor
-- Potencial de reventa
-- Colores disponibles (genera colores realistas y atractivos)
-- Tallas disponibles (enfócate en el rango estándar S-XL)
-
-Los trend_score van de 1-10. Priority puede ser: "high", "medium", "low".
-
-CRÍTICO para las imágenes: Genera URLs de Unsplash usando este formato exacto:
-- Vestidos: https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=400&h=400&fit=crop
-- Blusas: https://images.unsplash.com/photo-1618932260643-eee4a2f652a6?w=400&h=400&fit=crop
-- Jeans: https://images.unsplash.com/photo-1541099649105-f69ad21f3246?w=400&h=400&fit=crop
-- Faldas: https://images.unsplash.com/photo-1583496661160-fb5886a0aaaa?w=400&h=400&fit=crop
-- Chaquetas: https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=400&h=400&fit=crop
-- Tops: https://images.unsplash.com/photo-1564584217132-2271feaeb3c5?w=400&h=400&fit=crop
-- Cardigans: https://images.unsplash.com/photo-1591369822096-ffd140ec948f?w=400&h=400&fit=crop
-- Conjuntos: https://images.unsplash.com/photo-1594633313593-bab3825d0caf?w=400&h=400&fit=crop
-
-Usa estas URLs reales de Unsplash según el tipo de prenda. TODAS las imágenes deben usar URLs válidas de Unsplash.
-
-IMPORTANTE: SOLO productos de ropa para mujer. Responde SOLO con el JSON, sin texto adicional ni markdown.`
-          },
-          {
-            role: 'user',
-            content: `Analiza esta URL de tienda y genera recomendaciones de productos para importar: ${url}`
-          }
-        ],
-      }),
-    });
+Reglas IMPORTANTES:
+- Título, precio e IMAGEN deben existir en el HTML o en JSON-LD/schema.org de la página. NO inventes ni uses placeholders.
+- Resuelve URLs relativas usando el "Base URL" dado. Convierte toda imagen a URL absoluta.
+- Si un producto no tiene imagen, omítelo.
+- Colores y tallas: extrae si existen en la página. Si no aparecen, deja arrays vacíos.
+- trend_score, sales_estimate y recommendation pueden ser generados según el contenido (categoría, estilo, precio), pero NUNCA inventes imágenes.
+- Si hay muchos productos, elige un subconjunto VARIADO en cada ejecución (no devuelvas siempre los mismos).
+- SOLO ropa para mujer.
+- Responde SOLO con el JSON, sin texto adicional ni markdown.`
+            },
+            {
+              role: 'user',
+              content: `Analiza esta tienda y extrae productos reales. Asegúrate de que cada imagen provenga del HTML.
+URL: ${url}
+Base URL: ${baseUrl}
+HTML:
+${sanitizedHtml}`
+            }
+          ],
+        }),
+      });
 
     if (!aiResponse.ok) {
       const errorText = await aiResponse.text();
