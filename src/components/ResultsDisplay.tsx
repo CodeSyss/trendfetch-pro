@@ -5,6 +5,9 @@ import { TrendingUp, Download, Package } from "lucide-react";
 import type { AnalysisResult } from "@/pages/Index";
 import { useToast } from "@/hooks/use-toast";
 
+const IMAGE_PROXY_BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/image-proxy`;
+const proxiedImage = (u?: string) => (u ? `${IMAGE_PROXY_BASE}?url=${encodeURIComponent(u)}` : "");
+ 
 interface ResultsDisplayProps {
   results: AnalysisResult;
 }
@@ -73,6 +76,20 @@ export const ResultsDisplay = ({ results }: ResultsDisplayProps) => {
     }
   };
 
+  const makeAbsolute = (src?: string) => {
+    if (!src) return "";
+    let s = src.trim();
+    // Protocol-relative
+    if (s.startsWith("//")) s = "https:" + s;
+    // Already absolute
+    if (/^https?:\/\//i.test(s)) return s;
+    try {
+      return new URL(s, results.url).toString();
+    } catch {
+      return s;
+    }
+  };
+ 
   return (
     <section className="max-w-6xl mx-auto animate-fade-in">
       <div className="mb-8">
@@ -127,12 +144,14 @@ export const ResultsDisplay = ({ results }: ResultsDisplayProps) => {
           <Card key={index} className="p-6 hover:shadow-xl transition-all border-2 hover:border-primary/30">
             {product.image && (
               <div className="mb-4 rounded-lg overflow-hidden bg-muted aspect-square">
-                <img 
-                  src={product.image} 
+                <img
+                  src={proxiedImage(makeAbsolute(product.image))}
                   alt={product.title}
                   className="w-full h-full object-cover"
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
                   onError={(e) => {
-                    e.currentTarget.style.display = 'none';
+                    e.currentTarget.src = "/placeholder.svg";
                   }}
                 />
               </div>
