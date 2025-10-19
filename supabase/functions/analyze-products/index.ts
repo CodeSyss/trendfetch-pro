@@ -55,7 +55,8 @@ serve(async (req) => {
             {
               role: 'system',
               content: `Eres un experto analista de e-commerce y tendencias de moda femenina.
-Tu tarea: EXTRAER productos de la PÁGINA proporcionada y enriquecerlos (sin inventar imágenes).
+Tu tarea: EXTRAER productos REALES de ropa de mujer de la página web proporcionada.
+
 Devuelve SOLO JSON puro con esta estructura EXACTA:
 {
   "url": "url-analizada",
@@ -67,26 +68,30 @@ Devuelve SOLO JSON puro con esta estructura EXACTA:
       "sizes": ["..."],
       "image": "https://dominio.com/imagen.jpg",
       "trend_score": 8.5,
-      "sales_estimate": "500-1000/mes",
       "recommendation": "Recomendación breve y específica",
       "priority": "high"
     }
   ],
   "summary": {
-    "total_products": 10,
+    "total_products": 20,
     "avg_trend_score": 7.8,
-    "recommended_import": 6
+    "recommended_import": 12
   }
 }
-Reglas IMPORTANTES:
-- Título, precio e IMAGEN deben existir en el HTML o en JSON-LD/schema.org de la página. NO inventes ni uses placeholders.
-- Resuelve URLs relativas usando el "Base URL" dado. Convierte toda imagen a URL absoluta.
-- Si un producto no tiene imagen, omítelo.
-- Colores y tallas: extrae si existen en la página. Si no aparecen, deja arrays vacíos.
-- trend_score, sales_estimate y recommendation pueden ser generados según el contenido (categoría, estilo, precio), pero NUNCA inventes imágenes.
-- Si hay muchos productos, elige un subconjunto VARIADO en cada ejecución (no devuelvas siempre los mismos).
-- SOLO ropa para mujer.
-- Responde SOLO con el JSON, sin texto adicional ni markdown.`
+
+Reglas CRÍTICAS:
+1. MÍNIMO 20 productos de ropa de mujer. Si no encuentras 20, devuelve todos los que tengan datos completos (título, precio, imagen).
+2. SOLO ropa de mujer (vestidos, blusas, pantalones, faldas, tops, etc). NO accesorios, zapatos, bolsas, joyería.
+3. Título, precio e IMAGEN son OBLIGATORIOS. Si un producto no tiene imagen válida, omítelo completamente.
+4. Resuelve URLs relativas usando el "Base URL" proporcionado. Todas las imágenes deben ser URLs absolutas.
+5. Colores y tallas: extrae SOLO si aparecen en el HTML. Si no los encuentras, deja arrays vacíos [].
+6. Explora TODO el HTML para encontrar productos variados, no solo los primeros que aparezcan.
+7. trend_score (1-10): evalúa el estilo, modernidad y potencial de venta basado en descripción y categoría.
+8. priority: "high" para productos modernos/tendencia, "medium" para estables, "low" para básicos.
+9. recommendation: breve análisis del potencial del producto (1-2 oraciones).
+10. NO inventes URLs de imágenes. USA SOLO las que existen en el HTML.
+11. Busca imágenes en: <img>, JSON-LD, atributos data-src, srcset, etc.
+12. Responde SOLO con el JSON, sin markdown ni texto adicional.`
             },
             {
               role: 'user',

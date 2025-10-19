@@ -14,14 +14,13 @@ export const ResultsDisplay = ({ results }: ResultsDisplayProps) => {
 
   const handleExport = () => {
     const csv = [
-      ["Producto", "Precio", "Colores", "Tallas", "Score de Tendencia", "Ventas Estimadas", "Recomendación", "Prioridad"],
+      ["Producto", "Precio", "Colores", "Tallas", "Score de Tendencia", "Recomendación", "Prioridad"],
       ...results.products.map(p => [
         p.title,
         p.price,
         p.colors.join("; "),
         p.sizes.join("; "),
         p.trend_score.toString(),
-        p.sales_estimate,
         p.recommendation,
         p.priority
       ])
@@ -148,11 +147,6 @@ export const ResultsDisplay = ({ results }: ResultsDisplayProps) => {
                     </Badge>
                   ))}
                 </div>
-              </div>
-              
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Ventas estimadas:</span>
-                <span className="font-medium">{product.sales_estimate}</span>
               </div>
             </div>
             

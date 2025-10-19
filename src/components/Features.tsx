@@ -4,23 +4,23 @@ export const Features = () => {
   const features = [
     {
       icon: BarChart3,
-      title: "Análisis de Datos en Tiempo Real",
-      description: "Procesa miles de productos instantáneamente con IA avanzada"
+      title: "Análisis Inteligente de Ropa",
+      description: "Extrae productos reales de cualquier tienda online con IA"
     },
     {
       icon: Globe,
-      title: "Soporte Multi-Tienda",
-      description: "Compatible con Shein, AliExpress y más tiendas populares"
+      title: "Extracción de Datos Reales",
+      description: "Imágenes, precios, colores y tallas directamente de la página"
     },
     {
       icon: Zap,
-      title: "Resultados Instantáneos",
-      description: "Obtén recomendaciones en segundos, no en horas"
+      title: "Evaluación de Tendencias",
+      description: "Score de moda y prioridad basados en análisis de mercado"
     },
     {
       icon: Shield,
-      title: "Datos Confiables",
-      description: "Algoritmos probados con +10,000 análisis exitosos"
+      title: "Solo Ropa Femenina",
+      description: "Filtrado automático para enfocarse en tu nicho específico"
     }
   ];
 

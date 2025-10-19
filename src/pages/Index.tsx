@@ -14,7 +14,6 @@ export interface AnalysisResult {
     sizes: string[];
     image?: string;
     trend_score: number;
-    sales_estimate: string;
     recommendation: string;
     priority: "high" | "medium" | "low";
   }[];
