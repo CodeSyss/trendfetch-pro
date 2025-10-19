@@ -13,29 +13,54 @@ export const ResultsDisplay = ({ results }: ResultsDisplayProps) => {
   const { toast } = useToast();
 
   const handleExport = () => {
-    const csv = [
-      ["Producto", "Precio", "Colores", "Tallas", "Score de Tendencia", "Recomendación", "Prioridad"],
-      ...results.products.map(p => [
-        p.title,
-        p.price,
-        p.colors.join("; "),
-        p.sizes.join("; "),
-        p.trend_score.toString(),
-        p.recommendation,
-        p.priority
-      ])
-    ].map(row => row.join(",")).join("\n");
+    // Función para escapar campos CSV correctamente
+    const escapeCSV = (field: string) => {
+      if (field.includes(',') || field.includes('"') || field.includes('\n')) {
+        return `"${field.replace(/"/g, '""')}"`;
+      }
+      return field;
+    };
 
-    const blob = new Blob([csv], { type: "text/csv" });
+    const csvRows = [
+      // Encabezados
+      ["Producto", "Precio", "Colores", "Tallas", "Score de Tendencia", "Recomendación", "Prioridad", "URL de Imagen"].join(","),
+      // Datos de productos
+      ...results.products.map(p => [
+        escapeCSV(p.title),
+        escapeCSV(p.price),
+        escapeCSV(p.colors.join(", ")),
+        escapeCSV(p.sizes.join(", ")),
+        p.trend_score.toString(),
+        escapeCSV(p.recommendation),
+        escapeCSV(p.priority === "high" ? "Alta" : p.priority === "medium" ? "Media" : "Baja"),
+        p.image || ""
+      ].join(","))
+    ];
+
+    // Agregar líneas de resumen al final
+    csvRows.push("");
+    csvRows.push("RESUMEN");
+    csvRows.push(`Total de productos analizados,${results.summary.total_products}`);
+    csvRows.push(`Score promedio de tendencia,${results.summary.avg_trend_score}`);
+    csvRows.push(`Productos recomendados para importar,${results.summary.recommended_import}`);
+    csvRows.push(`URL analizada,${escapeCSV(results.url)}`);
+
+    const csv = csvRows.join("\n");
+    
+    // Agregar BOM UTF-8 para mejor compatibilidad con Excel
+    const BOM = "\uFEFF";
+    const blob = new Blob([BOM + csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "analisis-productos.csv";
+    const timestamp = new Date().toISOString().slice(0, 10);
+    a.download = `analisis-productos-${timestamp}.csv`;
     a.click();
+    URL.revokeObjectURL(url);
 
     toast({
       title: "Exportado",
-      description: "Lista de productos exportada exitosamente",
+      description: "Lista de productos exportada exitosamente con formato mejorado",
     });
   };
 
