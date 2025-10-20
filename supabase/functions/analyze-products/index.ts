@@ -117,6 +117,9 @@ IMPORTANTE:
 - Busca VARIEDAD en toda la página, no solo los primeros productos
 - Prioriza productos que se ajusten a la temporada y categoría
 - Busca productos con estilos similares a vestidos/tops tejidos rayados, conjuntos de punto, prendas tejidas con detalles
+- NUNCA inventes URLs de imágenes que no existan en el HTML
+- Si un producto no tiene imagen, NO lo incluyas en los resultados
+- Recorre TODO el HTML buscando al menos 20 productos diferentes con imágenes válidas
 
 URL: ${url}
 Base URL: ${baseUrl}
