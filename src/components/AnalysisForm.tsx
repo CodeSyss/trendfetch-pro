@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { Search, Loader2, Sparkles } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -14,6 +16,8 @@ interface AnalysisFormProps {
 
 export const AnalysisForm = ({ onResults, isAnalyzing, setIsAnalyzing }: AnalysisFormProps) => {
   const [url, setUrl] = useState("");
+  const [season, setSeason] = useState("caliente");
+  const [categories, setCategories] = useState("todos");
   const { toast } = useToast();
 
   const handleAnalyze = async (e: React.FormEvent) => {
@@ -32,7 +36,7 @@ export const AnalysisForm = ({ onResults, isAnalyzing, setIsAnalyzing }: Analysi
 
     try {
       const { data, error } = await supabase.functions.invoke("analyze-products", {
-        body: { url },
+        body: { url, season, categories },
       });
 
       if (error) throw error;
@@ -77,6 +81,43 @@ export const AnalysisForm = ({ onResults, isAnalyzing, setIsAnalyzing }: Analysi
             <p className="text-xs text-muted-foreground">
               Ingresa la URL de cualquier categoría o producto de Shein u otras tiendas
             </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="season" className="text-sm font-medium">
+                Temporada / Clima
+              </Label>
+              <Select value={season} onValueChange={setSeason} disabled={isAnalyzing}>
+                <SelectTrigger id="season" className="h-12">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="caliente">🌞 Clima Caliente (Primavera/Verano)</SelectItem>
+                  <SelectItem value="frio">❄️ Clima Frío (Otoño/Invierno)</SelectItem>
+                  <SelectItem value="todos">🌈 Todas las Temporadas</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="categories" className="text-sm font-medium">
+                Categorías Preferidas
+              </Label>
+              <Select value={categories} onValueChange={setCategories} disabled={isAnalyzing}>
+                <SelectTrigger id="categories" className="h-12">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todas las Categorías</SelectItem>
+                  <SelectItem value="tejidos">🧶 Prendas Tejidas</SelectItem>
+                  <SelectItem value="tops">👕 Tops y Blusas</SelectItem>
+                  <SelectItem value="vestidos">👗 Vestidos</SelectItem>
+                  <SelectItem value="pantalones">👖 Pantalones</SelectItem>
+                  <SelectItem value="conjuntos">💫 Conjuntos</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <Button

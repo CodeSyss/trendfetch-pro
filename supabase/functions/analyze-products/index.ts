@@ -11,8 +11,8 @@ serve(async (req) => {
   }
 
   try {
-    const { url } = await req.json();
-    console.log('Analyzing URL:', url);
+    const { url, season = 'todos', categories = 'todos' } = await req.json();
+    console.log('Analyzing URL:', url, 'Season:', season, 'Categories:', categories);
 
     if (!url) {
       throw new Error('URL is required');
@@ -54,7 +54,7 @@ serve(async (req) => {
           messages: [
             {
               role: 'system',
-              content: `Eres un experto analista de e-commerce y tendencias de moda femenina.
+              content: `Eres un experto analista de e-commerce y tendencias de moda femenina con especialización en productos tejidos y de temporada.
 Tu tarea: EXTRAER productos REALES de ropa de mujer de la página web proporcionada.
 
 Devuelve SOLO JSON puro con esta estructura EXACTA:
@@ -85,17 +85,39 @@ Reglas CRÍTICAS:
 3. Título, precio e IMAGEN son OBLIGATORIOS. Si un producto no tiene imagen válida, omítelo completamente.
 4. Resuelve URLs relativas usando el "Base URL" proporcionado. Todas las imágenes deben ser URLs absolutas.
 5. Colores y tallas: extrae SOLO si aparecen en el HTML. Si no los encuentras, deja arrays vacíos [].
-6. Explora TODO el HTML para encontrar productos variados, no solo los primeros que aparezcan.
-7. trend_score (1-10): evalúa el estilo, modernidad y potencial de venta basado en descripción y categoría.
-8. priority: "high" para productos modernos/tendencia, "medium" para estables, "low" para básicos.
-9. recommendation: breve análisis del potencial del producto (1-2 oraciones).
-10. NO inventes URLs de imágenes. USA SOLO las que existen en el HTML.
-11. Busca imágenes en: <img>, JSON-LD, atributos data-src, srcset, etc.
-12. Responde SOLO con el JSON, sin markdown ni texto adicional.`
+6. EXPLORA TODO EL HTML: No te quedes con los primeros productos. Busca VARIEDAD y CALIDAD en toda la página.
+7. PRIORIZA según temporada y categoría especificadas. Productos relevantes reciben trend_score más alto.
+8. trend_score (1-10): evalúa estilo, modernidad, adecuación a temporada y potencial de venta.
+9. priority: "high" para productos perfectos para temporada/categoría, "medium" para adecuados, "low" para básicos.
+10. recommendation: análisis específico del potencial considerando temporada y tendencias (1-2 oraciones).
+11. NO inventes URLs de imágenes. USA SOLO las que existen en el HTML.
+12. Busca imágenes en: <img>, JSON-LD, atributos data-src, srcset, etc.
+13. Responde SOLO con el JSON, sin markdown ni texto adicional.
+
+CONTEXTO DE TEMPORADA Y CATEGORÍA:
+${season === 'caliente' ? '- CLIMA CALIENTE (Primavera/Verano): Prioriza vestidos sin manga, tops tejidos ligeros, blusas frescas, pantalones ligeros, prendas con tejidos transpirables.' : ''}
+${season === 'frio' ? '- CLIMA FRÍO (Otoño/Invierno): Prioriza suéteres, vestidos de manga larga, conjuntos tejidos abrigados, pantalones de telas gruesas, prendas con capas.' : ''}
+${categories !== 'todos' ? `- CATEGORÍA PREFERIDA: ${categories === 'tejidos' ? 'Prendas tejidas de punto (sweaters, vestidos tejidos, tops tejidos, conjuntos tejidos)' : categories === 'tops' ? 'Tops, blusas y camisas' : categories === 'vestidos' ? 'Vestidos de todos los estilos' : categories === 'pantalones' ? 'Pantalones, leggings y palazzo' : 'Conjuntos coordinados (top + pantalón, vestido + chaqueta)'}` : ''}
+
+EJEMPLOS DE PRODUCTOS EXITOSOS SIMILARES:
+- Vestidos tejidos con rayas horizontales (estilo marinero)
+- Tops tejidos sin manga con escote en V
+- Pantalones tejidos de punto en colores neutros
+- Conjuntos de dos piezas tejidos (top + pantalón)
+- Prendas tejidas con detalles de perlas o pedrería`
             },
             {
               role: 'user',
-              content: `Analiza esta tienda y extrae productos reales. Asegúrate de que cada imagen provenga del HTML.
+              content: `Analiza esta tienda y extrae productos reales, priorizando según la temporada y categoría especificadas.
+
+TEMPORADA: ${season === 'caliente' ? 'CLIMA CALIENTE (Primavera/Verano)' : season === 'frio' ? 'CLIMA FRÍO (Otoño/Invierno)' : 'TODAS LAS TEMPORADAS'}
+CATEGORÍA: ${categories === 'todos' ? 'TODAS' : categories.toUpperCase()}
+
+IMPORTANTE: 
+- Busca VARIEDAD en toda la página, no solo los primeros productos
+- Prioriza productos que se ajusten a la temporada y categoría
+- Busca productos con estilos similares a vestidos/tops tejidos rayados, conjuntos de punto, prendas tejidas con detalles
+
 URL: ${url}
 Base URL: ${baseUrl}
 HTML:
