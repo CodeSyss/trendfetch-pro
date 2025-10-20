@@ -32,16 +32,18 @@ serve(async (req) => {
       });
     }
 
-    const upstream = await fetch(decodedUrl, {
-      headers: {
-        // Use a common browser UA to increase compatibility
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
-        "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
-        "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
-        "Referer": new URL(decodedUrl).origin,
-      },
-    });
+    const urlObj = new URL(decodedUrl);
+    const headers: Record<string, string> = {
+      "User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+      "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+      "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+    };
+    const host = urlObj.host.toLowerCase();
+    if (host.endsWith("ltwebstatic.com") || host.includes("shein")) {
+      headers["Referer"] = "https://us.shein.com/";
+    }
+
+    const upstream = await fetch(decodedUrl, { headers });
 
     if (!upstream.ok || !upstream.body) {
       console.error("image-proxy upstream error:", upstream.status, await upstream.text());

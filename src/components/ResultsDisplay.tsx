@@ -151,7 +151,13 @@ export const ResultsDisplay = ({ results }: ResultsDisplayProps) => {
                   loading="lazy"
                   referrerPolicy="no-referrer"
                   onError={(e) => {
-                    e.currentTarget.src = "/placeholder.svg";
+                    const direct = makeAbsolute(product.image);
+                    if (e.currentTarget.dataset.fallback !== "direct" && direct) {
+                      e.currentTarget.dataset.fallback = "direct";
+                      e.currentTarget.src = direct;
+                    } else {
+                      e.currentTarget.src = "/placeholder.svg";
+                    }
                   }}
                 />
               </div>
