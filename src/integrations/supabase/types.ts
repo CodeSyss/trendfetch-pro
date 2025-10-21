@@ -14,7 +14,60 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      productos_referencia: {
+        Row: {
+          categoria: string
+          colores: string[] | null
+          created_at: string
+          descripcion: string | null
+          id: string
+          imagen_url: string
+          notas: string | null
+          precio: string
+          tallas: string[] | null
+          temporada: string
+          tienda: string
+          titulo: string
+          trend_score: number | null
+          user_id: string
+          ventas_estimadas: number | null
+        }
+        Insert: {
+          categoria: string
+          colores?: string[] | null
+          created_at?: string
+          descripcion?: string | null
+          id?: string
+          imagen_url: string
+          notas?: string | null
+          precio: string
+          tallas?: string[] | null
+          temporada: string
+          tienda: string
+          titulo: string
+          trend_score?: number | null
+          user_id: string
+          ventas_estimadas?: number | null
+        }
+        Update: {
+          categoria?: string
+          colores?: string[] | null
+          created_at?: string
+          descripcion?: string | null
+          id?: string
+          imagen_url?: string
+          notas?: string | null
+          precio?: string
+          tallas?: string[] | null
+          temporada?: string
+          tienda?: string
+          titulo?: string
+          trend_score?: number | null
+          user_id?: string
+          ventas_estimadas?: number | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
