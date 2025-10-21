@@ -52,20 +52,12 @@ export const AdminPanel = () => {
     setLoading(true);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        toast.error("Debes iniciar sesión para agregar productos");
-        return;
-      }
-
       const coloresArray = formData.colores ? formData.colores.split(",").map(c => c.trim()) : [];
       const tallasArray = formData.tallas ? formData.tallas.split(",").map(t => t.trim()) : [];
 
       const { error } = await supabase
         .from("productos_referencia")
         .insert({
-          user_id: user.id,
           titulo: formData.titulo,
           precio: formData.precio,
           imagen_url: formData.imagen_url,

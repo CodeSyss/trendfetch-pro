@@ -29,7 +29,7 @@ export type Database = {
           tienda: string
           titulo: string
           trend_score: number | null
-          user_id: string
+          user_id: string | null
           ventas_estimadas: number | null
         }
         Insert: {
@@ -46,7 +46,7 @@ export type Database = {
           tienda: string
           titulo: string
           trend_score?: number | null
-          user_id: string
+          user_id?: string | null
           ventas_estimadas?: number | null
         }
         Update: {
@@ -63,7 +63,7 @@ export type Database = {
           tienda?: string
           titulo?: string
           trend_score?: number | null
-          user_id?: string
+          user_id?: string | null
           ventas_estimadas?: number | null
         }
         Relationships: []
