@@ -5,6 +5,65 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Productos de referencia desde el JSON
+const productosReferencia = [
+  {
+    "titulo": "Blusa Floral Verano",
+    "precio": "$299",
+    "imagen_url": "https://images.unsplash.com/photo-1485968579580-b6d095142e6e?w=400",
+    "temporada": "caliente",
+    "categoria": "blusas",
+    "colores": ["rosa", "blanco", "azul"],
+    "tallas": ["S", "M", "L", "XL"],
+    "trend_score": 8.5,
+    "recommendation": "Producto de catálogo - Blusa floral perfecta para temporada caliente, diseño fresco y ligero"
+  },
+  {
+    "titulo": "Vestido Casual Primavera",
+    "precio": "$450",
+    "imagen_url": "https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?w=400",
+    "temporada": "caliente",
+    "categoria": "vestidos",
+    "colores": ["amarillo", "verde", "blanco"],
+    "tallas": ["XS", "S", "M", "L"],
+    "trend_score": 9.0,
+    "recommendation": "Producto de catálogo - Vestido ligero ideal para clima cálido, muy versátil"
+  },
+  {
+    "titulo": "Suéter Tejido Invierno",
+    "precio": "$599",
+    "imagen_url": "https://images.unsplash.com/photo-1434389677669-e08b4cac3105?w=400",
+    "temporada": "frio",
+    "categoria": "sueteres",
+    "colores": ["gris", "negro", "beige"],
+    "tallas": ["S", "M", "L", "XL"],
+    "trend_score": 8.0,
+    "recommendation": "Producto de catálogo - Suéter cálido de alta calidad para temporada fría"
+  },
+  {
+    "titulo": "Chamarra Acolchada",
+    "precio": "$899",
+    "imagen_url": "https://images.unsplash.com/photo-1551028719-00167b16eac5?w=400",
+    "temporada": "frio",
+    "categoria": "chamarras",
+    "colores": ["negro", "azul marino", "gris"],
+    "tallas": ["M", "L", "XL"],
+    "trend_score": 9.5,
+    "recommendation": "Producto de catálogo - Chamarra perfecta para invierno, diseño moderno"
+  },
+  {
+    "titulo": "Pantalón Mezclilla Clásico",
+    "precio": "$499",
+    "imagen_url": "https://images.unsplash.com/photo-1542272604-787c3835535d?w=400",
+    "temporada": "todo el año",
+    "categoria": "pantalones",
+    "colores": ["azul", "negro", "gris"],
+    "tallas": ["26", "28", "30", "32", "34"],
+    "trend_score": 8.5,
+    "recommendation": "Producto de catálogo - Pantalón versátil para cualquier temporada"
+  }
+];
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -13,6 +72,21 @@ serve(async (req) => {
   try {
     const { url, season = 'todos', categories = 'todos' } = await req.json();
     console.log('Analyzing URL:', url, 'Season:', season, 'Categories:', categories);
+
+    // Filtrar productos del catálogo según temporada y categoría
+    let productosCatalogo = productosReferencia.filter(producto => {
+      let matchTemporada = season === 'todos' || 
+                          producto.temporada === 'todo el año' || 
+                          producto.temporada === season;
+      
+      let matchCategoria = categories === 'todos' || 
+                          producto.categoria.toLowerCase().includes(categories.toLowerCase()) ||
+                          categories.toLowerCase().includes(producto.categoria.toLowerCase());
+      
+      return matchTemporada && matchCategoria;
+    });
+
+    console.log(`Productos del catálogo filtrados: ${productosCatalogo.length}`);
 
     if (!url) {
       throw new Error('URL is required');
@@ -144,9 +218,46 @@ ${sanitizedHtml}`
     // Limpiar markdown si existe
     resultText = resultText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     
-    const result = JSON.parse(resultText);
+    const aiResult = JSON.parse(resultText);
 
-    return new Response(JSON.stringify(result), {
+    // Convertir productos del catálogo al formato esperado
+    const catalogoProducts = productosCatalogo.map(p => ({
+      title: p.titulo,
+      price: p.precio,
+      colors: p.colores,
+      sizes: p.tallas,
+      image: p.imagen_url,
+      trend_score: p.trend_score,
+      recommendation: p.recommendation,
+      priority: p.trend_score >= 9 ? "high" : p.trend_score >= 7.5 ? "medium" : "low",
+      source: "catalog" // Marcador para identificar origen
+    }));
+
+    // Marcar productos de IA con su origen
+    const aiProducts = aiResult.products.map((p: any) => ({
+      ...p,
+      source: "ai"
+    }));
+
+    // Combinar productos: catálogo primero, luego IA
+    const allProducts = [...catalogoProducts, ...aiProducts];
+
+    // Recalcular resumen
+    const totalProducts = allProducts.length;
+    const avgScore = allProducts.reduce((sum: number, p: any) => sum + p.trend_score, 0) / totalProducts;
+    const recommendedImport = allProducts.filter((p: any) => p.priority === "high").length;
+
+    const finalResult = {
+      url: aiResult.url,
+      products: allProducts,
+      summary: {
+        total_products: totalProducts,
+        avg_trend_score: Number(avgScore.toFixed(1)),
+        recommended_import: recommendedImport
+      }
+    };
+
+    return new Response(JSON.stringify(finalResult), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
