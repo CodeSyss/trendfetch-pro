@@ -15,7 +15,9 @@ interface AnalysisFormProps {
 }
 
 export const AnalysisForm = ({ onResults, isAnalyzing, setIsAnalyzing }: AnalysisFormProps) => {
-  const [url, setUrl] = useState("");
+  const [url1, setUrl1] = useState("");
+  const [url2, setUrl2] = useState("");
+  const [url3, setUrl3] = useState("");
   const [season, setSeason] = useState("caliente");
   const [categories, setCategories] = useState("todos");
   const { toast } = useToast();
@@ -23,10 +25,12 @@ export const AnalysisForm = ({ onResults, isAnalyzing, setIsAnalyzing }: Analysi
   const handleAnalyze = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!url.trim()) {
+    const urls = [url1, url2, url3].filter(u => u.trim());
+    
+    if (urls.length === 0) {
       toast({
         title: "Error",
-        description: "Por favor ingresa una URL válida",
+        description: "Por favor ingresa al menos una URL válida",
         variant: "destructive",
       });
       return;
@@ -36,7 +40,7 @@ export const AnalysisForm = ({ onResults, isAnalyzing, setIsAnalyzing }: Analysi
 
     try {
       const { data, error } = await supabase.functions.invoke("analyze-products", {
-        body: { url, season, categories },
+        body: { urls, season, categories },
       });
 
       if (error) throw error;
@@ -44,13 +48,13 @@ export const AnalysisForm = ({ onResults, isAnalyzing, setIsAnalyzing }: Analysi
       onResults(data);
       toast({
         title: "Análisis Completo",
-        description: `Se analizaron ${data.summary.total_products} productos`,
+        description: `Se analizaron ${data.summary.total_products} productos de ${urls.length} tienda${urls.length > 1 ? 's' : ''}`,
       });
     } catch (error: any) {
       console.error("Error analyzing:", error);
       toast({
         title: "Error",
-        description: error.message || "Error al analizar la tienda",
+        description: error.message || "Error al analizar las tiendas",
         variant: "destructive",
       });
     } finally {
@@ -62,24 +66,51 @@ export const AnalysisForm = ({ onResults, isAnalyzing, setIsAnalyzing }: Analysi
     <section className="max-w-3xl mx-auto mb-16">
       <div className="backdrop-blur-sm bg-card/50 rounded-3xl p-8 border border-border shadow-xl">
         <form onSubmit={handleAnalyze} className="space-y-6">
-          <div className="space-y-2">
-            <label htmlFor="url" className="text-sm font-medium">
-              URL de la Tienda
+          <div className="space-y-4">
+            <label className="text-sm font-medium">
+              URLs de Tiendas (1-3 tiendas)
             </label>
-            <div className="relative">
-              <Input
-                id="url"
-                type="url"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://www.shein.com/..."
-                className="pr-12 h-12 text-lg"
-                disabled={isAnalyzing}
-              />
-              <Search className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+            
+            <div className="space-y-3">
+              <div className="relative">
+                <Input
+                  type="url"
+                  value={url1}
+                  onChange={(e) => setUrl1(e.target.value)}
+                  placeholder="URL Tienda 1 (obligatoria)"
+                  className="pr-12 h-12"
+                  disabled={isAnalyzing}
+                />
+                <Search className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+              </div>
+              
+              <div className="relative">
+                <Input
+                  type="url"
+                  value={url2}
+                  onChange={(e) => setUrl2(e.target.value)}
+                  placeholder="URL Tienda 2 (opcional)"
+                  className="pr-12 h-12"
+                  disabled={isAnalyzing}
+                />
+                <Search className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+              </div>
+              
+              <div className="relative">
+                <Input
+                  type="url"
+                  value={url3}
+                  onChange={(e) => setUrl3(e.target.value)}
+                  placeholder="URL Tienda 3 (opcional)"
+                  className="pr-12 h-12"
+                  disabled={isAnalyzing}
+                />
+                <Search className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+              </div>
             </div>
+            
             <p className="text-xs text-muted-foreground">
-              Ingresa la URL de cualquier categoría o producto de Shein u otras tiendas
+              Analiza hasta 3 tiendas simultáneamente. Mínimo 10 productos por tienda.
             </p>
           </div>
 
@@ -115,6 +146,7 @@ export const AnalysisForm = ({ onResults, isAnalyzing, setIsAnalyzing }: Analysi
                   <SelectItem value="vestidos">👗 Vestidos</SelectItem>
                   <SelectItem value="pantalones">👖 Pantalones</SelectItem>
                   <SelectItem value="conjuntos">💫 Conjuntos</SelectItem>
+                  <SelectItem value="vacaciones">🏖️ Ropa de Vacaciones</SelectItem>
                 </SelectContent>
               </Select>
             </div>
