@@ -97,6 +97,22 @@ serve(async (req) => {
       throw new Error('LOVABLE_API_KEY not configured');
     }
 
+    // Función para validar si una imagen es accesible
+    const validateImage = async (imageUrl: string): Promise<boolean> => {
+      try {
+        const response = await fetch(imageUrl, { 
+          method: 'HEAD',
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          }
+        });
+        const contentType = response.headers.get('content-type');
+        return response.ok && (contentType?.startsWith('image/') ?? false);
+      } catch {
+        return false;
+      }
+    };
+
     // Procesar todas las URLs en paralelo
     const analysisPromises = urls.map(async (url: string) => {
       try {
@@ -218,7 +234,24 @@ ${sanitizedHtml}`
         resultText = resultText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
         
         const aiResult = JSON.parse(resultText);
-        return aiResult;
+        
+        // Validar imágenes de productos y filtrar los que no tienen imagen válida
+        const validatedProducts = [];
+        for (const product of aiResult.products) {
+          if (product.image) {
+            const isValid = await validateImage(product.image);
+            if (isValid) {
+              validatedProducts.push(product);
+              console.log(`✓ Imagen válida: ${product.title}`);
+            } else {
+              console.log(`✗ Imagen inválida, producto omitido: ${product.title}`);
+            }
+          } else {
+            console.log(`✗ Sin imagen, producto omitido: ${product.title}`);
+          }
+        }
+        
+        return { url, products: validatedProducts };
       } catch (error) {
         console.error(`Error processing ${url}:`, error);
         return { url, products: [] };
@@ -228,19 +261,28 @@ ${sanitizedHtml}`
     // Esperar a que todas las URLs se procesen
     const allResults = await Promise.all(analysisPromises);
 
-    // Convertir productos del catálogo al formato esperado (sin campo source para que aparezcan mezclados)
-    const catalogoProducts = productosCatalogo.map(p => ({
-      title: p.titulo,
-      price: p.precio,
-      colors: p.colores,
-      sizes: p.tallas,
-      image: p.imagen_url,
-      trend_score: p.trend_score,
-      recommendation: p.recommendation,
-      priority: p.trend_score >= 9 ? "high" : p.trend_score >= 7.5 ? "medium" : "low"
-    }));
+    // Validar imágenes del catálogo
+    const catalogoValidated = [];
+    for (const p of productosCatalogo) {
+      const isValid = await validateImage(p.imagen_url);
+      if (isValid) {
+        catalogoValidated.push({
+          title: p.titulo,
+          price: p.precio,
+          colors: p.colores,
+          sizes: p.tallas,
+          image: p.imagen_url,
+          trend_score: p.trend_score,
+          recommendation: p.recommendation,
+          priority: p.trend_score >= 9 ? "high" : p.trend_score >= 7.5 ? "medium" : "low"
+        });
+      }
+    }
+    
+    const catalogoProducts = catalogoValidated;
 
     // Combinar todos los productos de IA de todas las URLs (sin campo source)
+    // Ya vienen filtrados con imágenes válidas
     const allAiProducts = allResults.flatMap(result => 
       result.products.map((p: any) => ({
         title: p.title,
