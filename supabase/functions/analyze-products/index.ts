@@ -113,6 +113,41 @@ serve(async (req) => {
       }
     };
 
+    // Función para calcular similitud entre títulos (detección de duplicados)
+    const calculateTitleSimilarity = (title1: string, title2: string): number => {
+      const normalize = (str: string) => str.toLowerCase().trim().replace(/[^\w\s]/g, '');
+      const t1 = normalize(title1);
+      const t2 = normalize(title2);
+      
+      if (t1 === t2) return 1.0;
+      
+      const words1 = new Set(t1.split(/\s+/));
+      const words2 = new Set(t2.split(/\s+/));
+      const intersection = [...words1].filter(w => words2.has(w)).length;
+      const union = new Set([...words1, ...words2]).size;
+      
+      return intersection / union;
+    };
+
+    // Función para eliminar duplicados basándose en similitud de títulos
+    const removeDuplicates = (products: any[]): any[] => {
+      const unique: any[] = [];
+      
+      for (const product of products) {
+        const isDuplicate = unique.some(u => 
+          calculateTitleSimilarity(u.title, product.title) > 0.75
+        );
+        
+        if (!isDuplicate) {
+          unique.push(product);
+        } else {
+          console.log(`🔄 Duplicado eliminado: ${product.title}`);
+        }
+      }
+      
+      return unique;
+    };
+
     // Procesar todas las URLs en paralelo
     const analysisPromises = urls.map(async (url: string) => {
       try {
@@ -159,54 +194,62 @@ serve(async (req) => {
             messages: [
               {
                 role: 'system',
-                content: `Eres un experto analista de e-commerce y tendencias de moda femenina.
-Tu tarea: EXTRAER exactamente 10 productos REALES de ropa de mujer de la página web proporcionada.
+                content: `Eres un experto analista de e-commerce y tendencias de moda femenina con experiencia en merchandising y análisis de tendencias.
 
-IMPORTANTE: A continuación te mostraré productos de referencia de nuestro catálogo que coinciden con la búsqueda actual. 
-Úsalos como INSPIRACIÓN para identificar productos similares en la tienda que estás analizando:
+Tu tarea: EXTRAER entre 12-15 productos REALES de ropa de mujer de la página web proporcionada. Extraeré más productos para compensar posibles imágenes inválidas.
 
-PRODUCTOS DE REFERENCIA DEL CATÁLOGO:
-${productosCatalogo.map(p => `- ${p.titulo}: ${p.recommendation} (Score: ${p.trend_score})`).join('\n')}
+PRODUCTOS DE REFERENCIA (úsalos como guía de estilo y tendencias):
+${productosCatalogo.map(p => `• ${p.titulo} - ${p.recommendation} [Score: ${p.trend_score}/10]`).join('\n')}
 
-Devuelve SOLO JSON puro con esta estructura EXACTA:
+CRITERIOS DE SELECCIÓN (en orden de prioridad):
+1. 🎯 ALINEACIÓN CON REFERENCIAS: Productos que sigan las tendencias y estilos de los productos de referencia
+2. 📸 IMAGEN DE CALIDAD: URLs de imágenes absolutas, claras y funcionales
+3. 💎 CALIDAD DEL PRODUCTO: Diseño moderno, buena presentación, descripción completa
+4. 💰 PRECIO COMPETITIVO: Precios realistas y acordes al mercado
+5. 🌟 VARIEDAD: Diferentes estilos dentro de la tendencia (no todos iguales)
+
+FORMATO JSON (devuelve SOLO esto, sin markdown):
 {
   "url": "url-analizada",
   "products": [
     {
-      "title": "Nombre del producto",
-      "price": "$XX.XX",
-      "colors": ["..."],
-      "sizes": ["..."],
-      "image": "https://dominio.com/imagen.jpg",
+      "title": "Nombre exacto del producto",
+      "price": "$XXX.XX",
+      "colors": ["color1", "color2"],
+      "sizes": ["S", "M", "L"],
+      "image": "https://dominio.com/ruta/completa/imagen.jpg",
       "trend_score": 8.5,
-      "recommendation": "Recomendación breve y específica",
-      "priority": "high"
+      "recommendation": "Por qué este producto es tendencia y cómo se alinea con las referencias",
+      "priority": "high",
+      "similarity_to_reference": 0.85
     }
   ]
 }
 
-Reglas CRÍTICAS:
-1. EXACTAMENTE 10 productos de ropa de mujer con datos completos (título, precio, imagen).
-2. USA los productos de referencia como guía para identificar estilos y tendencias similares.
-3. SOLO ropa de mujer (vestidos, blusas, pantalones, faldas, tops, etc). NO accesorios, zapatos, bolsas.
-4. Título, precio e IMAGEN son OBLIGATORIOS. Si no tiene imagen válida, omítelo.
-5. Resuelve URLs relativas usando el "Base URL". Todas las imágenes deben ser URLs absolutas.
-6. Colores y tallas: extrae SOLO si aparecen en el HTML. Si no, deja arrays vacíos [].
-7. PRIORIZA productos que se alineen con los estilos de los productos de referencia.
-8. trend_score (1-10): evalúa estilo, modernidad, similitud con referencias, adecuación a temporada.
-9. priority: "high" para productos que coinciden con las tendencias de referencia, "medium" para adecuados, "low" para básicos.
-10. NO inventes URLs de imágenes. USA SOLO las del HTML.
-11. Responde SOLO con el JSON, sin markdown.
+REGLAS ESTRICTAS:
+✅ 12-15 productos de ROPA DE MUJER únicamente (vestidos, blusas, pantalones, faldas, tops, suéteres, chamarras)
+✅ Título + precio + imagen son OBLIGATORIOS (si falta algo, omite el producto)
+✅ URLs de imágenes ABSOLUTAS (resuelve relativas con Base URL)
+✅ Colores/tallas: extrae si están visibles, sino deja []
+✅ trend_score: 1-10 basado en modernidad, calidad, alineación con referencias
+✅ priority: "high" (90%+ alineación), "medium" (70-89%), "low" (<70%)
+✅ similarity_to_reference: 0-1 (qué tan similar es a los productos de referencia)
 
-CONTEXTO DE BÚSQUEDA:
-${season === 'caliente' ? '- CLIMA CALIENTE: Prioriza prendas ligeras, sin manga, frescas que coincidan con el estilo de las referencias.' : ''}
-${season === 'frio' ? '- CLIMA FRÍO: Prioriza suéteres, manga larga, abrigos similares a las referencias.' : ''}
-${categories === 'vacaciones' ? '- ROPA DE VACACIONES: Prioriza vestidos playeros, pareos, trajes de baño tipo cover-ups, ropa resort, vestidos fluidos, conjuntos veraniegos que sigan el estilo de las referencias.' : ''}
-${categories === 'tejidos' ? '- PRENDAS TEJIDAS: Prioriza sweaters, vestidos tejidos, tops tejidos similares a las referencias.' : ''}
-${categories === 'tops' ? '- TOPS Y BLUSAS que sigan las tendencias de las referencias' : ''}
-${categories === 'vestidos' ? '- VESTIDOS de todos los estilos alineados con las referencias' : ''}
-${categories === 'pantalones' ? '- PANTALONES, leggings, palazzo similares a las referencias' : ''}
-${categories === 'conjuntos' ? '- CONJUNTOS coordinados que sigan el estilo de las referencias' : ''}`
+❌ NO accesorios, zapatos, bolsas, joyería
+❌ NO inventes URLs de imágenes
+❌ NO incluyas productos sin imagen válida
+❌ NO repitas productos similares (evita duplicados)
+
+CONTEXTO DE BÚSQUEDA ESPECÍFICO:
+${season === 'caliente' ? '🌞 CLIMA CALIENTE: Enfócate en prendas ligeras, frescas, transpirables, sin manga o manga corta, colores claros.' : ''}
+${season === 'frio' ? '❄️ CLIMA FRÍO: Prioriza suéteres, manga larga, chamarras, abrigos, capas, tejidos gruesos.' : ''}
+${categories === 'vacaciones' ? '🏖️ VACACIONES: Vestidos playeros, pareos, kaftanes, cover-ups, ropa resort, estampados tropicales, looks casuales de playa.' : ''}
+${categories === 'tejidos' ? '🧶 TEJIDOS: Sweaters, cardigans, vestidos tejidos, tops de punto, texturas artesanales.' : ''}
+${categories === 'tops' ? '👚 TOPS: Blusas, camisas, crop tops, bodysuits, tops casuales y elegantes.' : ''}
+${categories === 'vestidos' ? '👗 VESTIDOS: Todos los estilos - casuales, elegantes, midi, maxi, mini, con estampados o lisos.' : ''}
+${categories === 'pantalones' ? '👖 PANTALONES: Jeans, leggings, palazzo, cargo, formales, casuales.' : ''}
+${categories === 'conjuntos' ? '👔 CONJUNTOS: Coordinados de 2-3 piezas, matching sets, outfits completos.' : ''}
+${season === 'todos' && categories === 'todos' ? '🌈 TODO: Selecciona lo mejor de la tienda, variedad de estilos y temporadas.' : ''}`
               },
               {
                 role: 'user',
@@ -251,7 +294,17 @@ ${sanitizedHtml}`
           }
         }
         
-        return { url, products: validatedProducts };
+        // Eliminar duplicados
+        const uniqueProducts = removeDuplicates(validatedProducts);
+        
+        // Ordenar por trend_score y tomar los 10 mejores
+        const topProducts = uniqueProducts
+          .sort((a, b) => b.trend_score - a.trend_score)
+          .slice(0, 10);
+        
+        console.log(`📊 Productos procesados: ${aiResult.products.length} → ${validatedProducts.length} válidos → ${uniqueProducts.length} únicos → ${topProducts.length} mejores`);
+        
+        return { url, products: topProducts };
       } catch (error) {
         console.error(`Error processing ${url}:`, error);
         return { url, products: [] };
