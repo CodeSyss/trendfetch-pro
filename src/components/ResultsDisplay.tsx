@@ -142,11 +142,6 @@ export const ResultsDisplay = ({ results }: ResultsDisplayProps) => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {results.products.map((product, index) => (
           <Card key={index} className="p-6 hover:shadow-xl transition-all border-2 hover:border-primary/30 relative">
-            {product.source === "catalog" && (
-              <Badge className="absolute top-2 right-2 bg-purple-500/10 text-purple-500 border-purple-500/20">
-                Catálogo
-              </Badge>
-            )}
             {product.image && (
               <div className="mb-4 rounded-lg overflow-hidden bg-muted aspect-square">
                 <img

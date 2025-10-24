@@ -100,12 +100,21 @@ serve(async (req) => {
     // Procesar todas las URLs en paralelo
     const analysisPromises = urls.map(async (url: string) => {
       try {
-        // Obtén y sanitiza HTML de la página
+        // Obtén y sanitiza HTML de la página con headers mejorados
         const pageResponse = await fetch(url, {
           headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
-            'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8'
-          }
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Upgrade-Insecure-Requests': '1'
+          },
+          redirect: 'follow'
         });
         
         if (!pageResponse.ok) {
@@ -137,6 +146,12 @@ serve(async (req) => {
                 content: `Eres un experto analista de e-commerce y tendencias de moda femenina.
 Tu tarea: EXTRAER exactamente 10 productos REALES de ropa de mujer de la página web proporcionada.
 
+IMPORTANTE: A continuación te mostraré productos de referencia de nuestro catálogo que coinciden con la búsqueda actual. 
+Úsalos como INSPIRACIÓN para identificar productos similares en la tienda que estás analizando:
+
+PRODUCTOS DE REFERENCIA DEL CATÁLOGO:
+${productosCatalogo.map(p => `- ${p.titulo}: ${p.recommendation} (Score: ${p.trend_score})`).join('\n')}
+
 Devuelve SOLO JSON puro con esta estructura EXACTA:
 {
   "url": "url-analizada",
@@ -156,25 +171,26 @@ Devuelve SOLO JSON puro con esta estructura EXACTA:
 
 Reglas CRÍTICAS:
 1. EXACTAMENTE 10 productos de ropa de mujer con datos completos (título, precio, imagen).
-2. SOLO ropa de mujer (vestidos, blusas, pantalones, faldas, tops, etc). NO accesorios, zapatos, bolsas.
-3. Título, precio e IMAGEN son OBLIGATORIOS. Si no tiene imagen válida, omítelo.
-4. Resuelve URLs relativas usando el "Base URL". Todas las imágenes deben ser URLs absolutas.
-5. Colores y tallas: extrae SOLO si aparecen en el HTML. Si no, deja arrays vacíos [].
-6. PRIORIZA según temporada y categoría especificadas.
-7. trend_score (1-10): evalúa estilo, modernidad, adecuación a temporada.
-8. priority: "high" para productos perfectos, "medium" para adecuados, "low" para básicos.
-9. NO inventes URLs de imágenes. USA SOLO las del HTML.
-10. Responde SOLO con el JSON, sin markdown.
+2. USA los productos de referencia como guía para identificar estilos y tendencias similares.
+3. SOLO ropa de mujer (vestidos, blusas, pantalones, faldas, tops, etc). NO accesorios, zapatos, bolsas.
+4. Título, precio e IMAGEN son OBLIGATORIOS. Si no tiene imagen válida, omítelo.
+5. Resuelve URLs relativas usando el "Base URL". Todas las imágenes deben ser URLs absolutas.
+6. Colores y tallas: extrae SOLO si aparecen en el HTML. Si no, deja arrays vacíos [].
+7. PRIORIZA productos que se alineen con los estilos de los productos de referencia.
+8. trend_score (1-10): evalúa estilo, modernidad, similitud con referencias, adecuación a temporada.
+9. priority: "high" para productos que coinciden con las tendencias de referencia, "medium" para adecuados, "low" para básicos.
+10. NO inventes URLs de imágenes. USA SOLO las del HTML.
+11. Responde SOLO con el JSON, sin markdown.
 
-CONTEXTO:
-${season === 'caliente' ? '- CLIMA CALIENTE: Prioriza prendas ligeras, sin manga, frescas.' : ''}
-${season === 'frio' ? '- CLIMA FRÍO: Prioriza suéteres, manga larga, abrigos.' : ''}
-${categories === 'vacaciones' ? '- ROPA DE VACACIONES: Prioriza vestidos playeros, pareos, trajes de baño tipo cover-ups, ropa resort, vestidos fluidos, conjuntos veraniegos.' : ''}
-${categories === 'tejidos' ? '- PRENDAS TEJIDAS: Prioriza sweaters, vestidos tejidos, tops tejidos.' : ''}
-${categories === 'tops' ? '- TOPS Y BLUSAS' : ''}
-${categories === 'vestidos' ? '- VESTIDOS de todos los estilos' : ''}
-${categories === 'pantalones' ? '- PANTALONES, leggings, palazzo' : ''}
-${categories === 'conjuntos' ? '- CONJUNTOS coordinados' : ''}`
+CONTEXTO DE BÚSQUEDA:
+${season === 'caliente' ? '- CLIMA CALIENTE: Prioriza prendas ligeras, sin manga, frescas que coincidan con el estilo de las referencias.' : ''}
+${season === 'frio' ? '- CLIMA FRÍO: Prioriza suéteres, manga larga, abrigos similares a las referencias.' : ''}
+${categories === 'vacaciones' ? '- ROPA DE VACACIONES: Prioriza vestidos playeros, pareos, trajes de baño tipo cover-ups, ropa resort, vestidos fluidos, conjuntos veraniegos que sigan el estilo de las referencias.' : ''}
+${categories === 'tejidos' ? '- PRENDAS TEJIDAS: Prioriza sweaters, vestidos tejidos, tops tejidos similares a las referencias.' : ''}
+${categories === 'tops' ? '- TOPS Y BLUSAS que sigan las tendencias de las referencias' : ''}
+${categories === 'vestidos' ? '- VESTIDOS de todos los estilos alineados con las referencias' : ''}
+${categories === 'pantalones' ? '- PANTALONES, leggings, palazzo similares a las referencias' : ''}
+${categories === 'conjuntos' ? '- CONJUNTOS coordinados que sigan el estilo de las referencias' : ''}`
               },
               {
                 role: 'user',
@@ -212,7 +228,7 @@ ${sanitizedHtml}`
     // Esperar a que todas las URLs se procesen
     const allResults = await Promise.all(analysisPromises);
 
-    // Convertir productos del catálogo al formato esperado
+    // Convertir productos del catálogo al formato esperado (sin campo source para que aparezcan mezclados)
     const catalogoProducts = productosCatalogo.map(p => ({
       title: p.titulo,
       price: p.precio,
@@ -221,21 +237,27 @@ ${sanitizedHtml}`
       image: p.imagen_url,
       trend_score: p.trend_score,
       recommendation: p.recommendation,
-      priority: p.trend_score >= 9 ? "high" : p.trend_score >= 7.5 ? "medium" : "low",
-      source: "catalog"
+      priority: p.trend_score >= 9 ? "high" : p.trend_score >= 7.5 ? "medium" : "low"
     }));
 
-    // Combinar todos los productos de IA de todas las URLs
+    // Combinar todos los productos de IA de todas las URLs (sin campo source)
     const allAiProducts = allResults.flatMap(result => 
       result.products.map((p: any) => ({
-        ...p,
-        source: "ai",
+        title: p.title,
+        price: p.price,
+        colors: p.colors || [],
+        sizes: p.sizes || [],
+        image: p.image,
+        trend_score: p.trend_score,
+        recommendation: p.recommendation,
+        priority: p.priority,
         store_url: result.url
       }))
     );
 
-    // Combinar productos: catálogo primero, luego todos los productos de IA
-    const allProducts = [...catalogoProducts, ...allAiProducts];
+    // Combinar y mezclar productos: catálogo + IA, mezclados aleatoriamente
+    const allProducts = [...catalogoProducts, ...allAiProducts]
+      .sort(() => Math.random() - 0.5);
 
     // Recalcular resumen
     const totalProducts = allProducts.length;

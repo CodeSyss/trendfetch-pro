@@ -16,7 +16,7 @@ export interface AnalysisResult {
     trend_score: number;
     recommendation: string;
     priority: "high" | "medium" | "low";
-    source?: "catalog" | "ai";
+    store_url?: string;
   }[];
   summary: {
     total_products: number;
