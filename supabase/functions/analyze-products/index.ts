@@ -5,64 +5,25 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Productos de referencia desde el JSON
-const productosReferencia = [
-  {
-    "titulo": "Blusa Floral Verano",
-    "precio": "$299",
-    "imagen_url": "https://images.unsplash.com/photo-1485968579580-b6d095142e6e?w=400",
-    "temporada": "caliente",
-    "categoria": "blusas",
-    "colores": ["rosa", "blanco", "azul"],
-    "tallas": ["S", "M", "L", "XL"],
-    "trend_score": 8.5,
-    "recommendation": "Producto de catálogo - Blusa floral perfecta para temporada caliente, diseño fresco y ligero"
-  },
-  {
-    "titulo": "Vestido Casual Primavera",
-    "precio": "$450",
-    "imagen_url": "https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?w=400",
-    "temporada": "caliente",
-    "categoria": "vestidos",
-    "colores": ["amarillo", "verde", "blanco"],
-    "tallas": ["XS", "S", "M", "L"],
-    "trend_score": 9.0,
-    "recommendation": "Producto de catálogo - Vestido ligero ideal para clima cálido, muy versátil"
-  },
-  {
-    "titulo": "Suéter Tejido Invierno",
-    "precio": "$599",
-    "imagen_url": "https://images.unsplash.com/photo-1434389677669-e08b4cac3105?w=400",
-    "temporada": "frio",
-    "categoria": "sueteres",
-    "colores": ["gris", "negro", "beige"],
-    "tallas": ["S", "M", "L", "XL"],
-    "trend_score": 8.0,
-    "recommendation": "Producto de catálogo - Suéter cálido de alta calidad para temporada fría"
-  },
-  {
-    "titulo": "Chamarra Acolchada",
-    "precio": "$899",
-    "imagen_url": "https://images.unsplash.com/photo-1551028719-00167b16eac5?w=400",
-    "temporada": "frio",
-    "categoria": "chamarras",
-    "colores": ["negro", "azul marino", "gris"],
-    "tallas": ["M", "L", "XL"],
-    "trend_score": 9.5,
-    "recommendation": "Producto de catálogo - Chamarra perfecta para invierno, diseño moderno"
-  },
-  {
-    "titulo": "Pantalón Mezclilla Clásico",
-    "precio": "$499",
-    "imagen_url": "https://images.unsplash.com/photo-1542272604-787c3835535d?w=400",
-    "temporada": "todo el año",
-    "categoria": "pantalones",
-    "colores": ["azul", "negro", "gris"],
-    "tallas": ["26", "28", "30", "32", "34"],
-    "trend_score": 8.5,
-    "recommendation": "Producto de catálogo - Pantalón versátil para cualquier temporada"
+// Productos de referencia desde el JSON (ahora vacío, el usuario agregará productos)
+const productosReferencia: any[] = [];
+
+// Sistema de caché simple en memoria
+const cache = new Map<string, { data: any; timestamp: number }>();
+const CACHE_DURATION = 1000 * 60 * 30; // 30 minutos
+
+// Función para obtener el nombre de la tienda desde la URL
+const getStoreName = (url: string): string => {
+  try {
+    const hostname = new URL(url).hostname;
+    // Extraer el nombre principal del dominio (ej: zara.com -> zara, shein.com -> shein)
+    const parts = hostname.split('.');
+    const storeName = parts.length >= 2 ? parts[parts.length - 2] : hostname;
+    return storeName.toLowerCase();
+  } catch {
+    return 'unknown';
   }
-];
+};
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -73,20 +34,15 @@ serve(async (req) => {
     const { urls, season = 'todos', categories = 'todos' } = await req.json();
     console.log('Analyzing URLs:', urls, 'Season:', season, 'Categories:', categories);
 
-    // Filtrar productos del catálogo según temporada y categoría
-    let productosCatalogo = productosReferencia.filter(producto => {
-      let matchTemporada = season === 'todos' || 
-                          producto.temporada === 'todo el año' || 
-                          producto.temporada === season;
-      
-      let matchCategoria = categories === 'todos' || 
-                          producto.categoria.toLowerCase().includes(categories.toLowerCase()) ||
-                          categories.toLowerCase().includes(producto.categoria.toLowerCase());
-      
-      return matchTemporada && matchCategoria;
-    });
-
-    console.log(`Productos del catálogo filtrados: ${productosCatalogo.length}`);
+    // Verificar caché primero
+    const cacheKey = `${urls.join('|')}|${season}|${categories}`;
+    const cached = cache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+      console.log('🎯 Returning cached results');
+      return new Response(JSON.stringify(cached.data), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     if (!urls || urls.length === 0) {
       throw new Error('At least one URL is required');
@@ -151,6 +107,27 @@ serve(async (req) => {
     // Procesar todas las URLs en paralelo
     const analysisPromises = urls.map(async (url: string) => {
       try {
+        const storeName = getStoreName(url);
+        console.log(`🏪 Analyzing store: ${storeName}`);
+
+        // Filtrar productos del catálogo según temporada, categoría Y tienda
+        let productosCatalogo = productosReferencia.filter(producto => {
+          let matchTemporada = season === 'todos' || 
+                              producto.temporada === 'todo el año' || 
+                              producto.temporada === season;
+          
+          let matchCategoria = categories === 'todos' || 
+                              producto.categoria?.toLowerCase().includes(categories.toLowerCase()) ||
+                              categories.toLowerCase().includes(producto.categoria?.toLowerCase());
+          
+          // Solo incluir productos de la misma tienda o productos sin tienda especificada
+          let matchTienda = !producto.tienda || producto.tienda.toLowerCase() === storeName;
+          
+          return matchTemporada && matchCategoria && matchTienda;
+        });
+
+        console.log(`📦 Productos del catálogo filtrados para ${storeName}: ${productosCatalogo.length}`);
+
         // Obtén y sanitiza HTML de la página con headers mejorados
         const pageResponse = await fetch(url, {
           headers: {
@@ -196,10 +173,13 @@ serve(async (req) => {
                 role: 'system',
                 content: `Eres un experto analista de e-commerce y tendencias de moda femenina con experiencia en merchandising y análisis de tendencias.
 
-Tu tarea: EXTRAER entre 12-15 productos REALES de ropa de mujer de la página web proporcionada. Extraeré más productos para compensar posibles imágenes inválidas.
+Tu tarea: EXTRAER entre 15-18 productos REALES de ropa de mujer de la página web proporcionada. Extraeré más productos para compensar posibles imágenes inválidas.
 
 PRODUCTOS DE REFERENCIA (úsalos como guía de estilo y tendencias):
-${productosCatalogo.map(p => `• ${p.titulo} - ${p.recommendation} [Score: ${p.trend_score}/10]`).join('\n')}
+${productosCatalogo.length > 0 
+  ? productosCatalogo.map(p => `• ${p.titulo} - ${p.recommendation} [Score: ${p.trend_score}/10]`).join('\n')
+  : '• No hay productos de referencia para esta tienda aún. Selecciona los mejores productos basándote en tendencias actuales de moda.'
+}
 
 CRITERIOS DE SELECCIÓN (en orden de prioridad):
 1. 🎯 ALINEACIÓN CON REFERENCIAS: Productos que sigan las tendencias y estilos de los productos de referencia
@@ -227,7 +207,7 @@ FORMATO JSON (devuelve SOLO esto, sin markdown):
 }
 
 REGLAS ESTRICTAS:
-✅ 12-15 productos de ROPA DE MUJER únicamente (vestidos, blusas, pantalones, faldas, tops, suéteres, chamarras)
+✅ 15-18 productos de ROPA DE MUJER únicamente (vestidos, blusas, pantalones, faldas, tops, suéteres, chamarras)
 ✅ Título + precio + imagen son OBLIGATORIOS (si falta algo, omite el producto)
 ✅ URLs de imágenes ABSOLUTAS (resuelve relativas con Base URL)
 ✅ Colores/tallas: extrae si están visibles, sino deja []
@@ -253,8 +233,9 @@ ${season === 'todos' && categories === 'todos' ? '🌈 TODO: Selecciona lo mejor
               },
               {
                 role: 'user',
-                content: `Analiza esta tienda y extrae EXACTAMENTE 10 productos reales.
+                content: `Analiza esta tienda (${storeName.toUpperCase()}) y extrae EXACTAMENTE 15-18 productos reales de alta calidad.
 
+TIENDA: ${storeName.toUpperCase()}
 TEMPORADA: ${season === 'caliente' ? 'CLIMA CALIENTE' : season === 'frio' ? 'CLIMA FRÍO' : 'TODAS'}
 CATEGORÍA: ${categories.toUpperCase()}
 
@@ -284,7 +265,11 @@ ${sanitizedHtml}`
           if (product.image) {
             const isValid = await validateImage(product.image);
             if (isValid) {
-              validatedProducts.push(product);
+              // Agregar el campo tienda al producto
+              validatedProducts.push({
+                ...product,
+                store: storeName
+              });
               console.log(`✓ Imagen válida: ${product.title}`);
             } else {
               console.log(`✗ Imagen inválida, producto omitido: ${product.title}`);
@@ -304,7 +289,7 @@ ${sanitizedHtml}`
         
         console.log(`📊 Productos procesados: ${aiResult.products.length} → ${validatedProducts.length} válidos → ${uniqueProducts.length} únicos → ${topProducts.length} mejores`);
         
-        return { url, products: topProducts };
+        return { url, products: topProducts, storeName };
       } catch (error) {
         console.error(`Error processing ${url}:`, error);
         return { url, products: [] };
@@ -314,30 +299,56 @@ ${sanitizedHtml}`
     // Esperar a que todas las URLs se procesen
     const allResults = await Promise.all(analysisPromises);
 
-    // Validar imágenes del catálogo
-    const catalogoValidated = [];
-    for (const p of productosCatalogo) {
-      const isValid = await validateImage(p.imagen_url);
-      if (isValid) {
-        catalogoValidated.push({
-          title: p.titulo,
-          price: p.precio,
-          colors: p.colores,
-          sizes: p.tallas,
-          image: p.imagen_url,
-          trend_score: p.trend_score,
-          recommendation: p.recommendation,
-          priority: p.trend_score >= 9 ? "high" : p.trend_score >= 7.5 ? "medium" : "low"
-        });
-      }
-    }
+    // Procesar productos del catálogo por tienda
+    const catalogoProductsByStore = new Map<string, any[]>();
     
-    const catalogoProducts = catalogoValidated;
+    for (const result of allResults) {
+      const storeName = result.storeName;
+      
+      // Filtrar productos del catálogo para esta tienda específica
+      const storeProducts = productosReferencia.filter(producto => {
+        let matchTemporada = season === 'todos' || 
+                            producto.temporada === 'todo el año' || 
+                            producto.temporada === season;
+        
+        let matchCategoria = categories === 'todos' || 
+                            producto.categoria?.toLowerCase().includes(categories.toLowerCase()) ||
+                            categories.toLowerCase().includes(producto.categoria?.toLowerCase());
+        
+        let matchTienda = !producto.tienda || producto.tienda.toLowerCase() === storeName;
+        
+        return matchTemporada && matchCategoria && matchTienda;
+      });
 
-    // Combinar todos los productos de IA de todas las URLs (sin campo source)
-    // Ya vienen filtrados con imágenes válidas
-    const allAiProducts = allResults.flatMap(result => 
-      result.products.map((p: any) => ({
+      // Validar imágenes del catálogo para esta tienda
+      const catalogoValidated = [];
+      for (const p of storeProducts) {
+        const isValid = await validateImage(p.imagen_url);
+        if (isValid) {
+          catalogoValidated.push({
+            title: p.titulo,
+            price: p.precio,
+            colors: p.colores,
+            sizes: p.tallas,
+            image: p.imagen_url,
+            trend_score: p.trend_score,
+            recommendation: p.recommendation,
+            priority: p.trend_score >= 9 ? "high" : p.trend_score >= 7.5 ? "medium" : "low",
+            store: storeName,
+            store_url: result.url
+          });
+        }
+      }
+      
+      catalogoProductsByStore.set(storeName, catalogoValidated);
+    }
+
+    // Combinar todos los productos de IA y catálogo por tienda
+    const allProductsByStore: any[] = [];
+    
+    for (const result of allResults) {
+      const storeName = result.storeName;
+      const aiProducts = result.products.map((p: any) => ({
         title: p.title,
         price: p.price,
         colors: p.colors || [],
@@ -346,13 +357,21 @@ ${sanitizedHtml}`
         trend_score: p.trend_score,
         recommendation: p.recommendation,
         priority: p.priority,
+        store: storeName,
         store_url: result.url
-      }))
-    );
+      }));
 
-    // Combinar y mezclar productos: catálogo + IA, mezclados aleatoriamente
-    const allProducts = [...catalogoProducts, ...allAiProducts]
-      .sort(() => Math.random() - 0.5);
+      const catalogoProducts = catalogoProductsByStore.get(storeName) || [];
+      
+      // Mezclar productos de catálogo con productos de IA de forma aleatoria
+      const storeProducts = [...catalogoProducts, ...aiProducts]
+        .sort(() => Math.random() - 0.5);
+      
+      allProductsByStore.push(...storeProducts);
+    }
+
+    // Mezcla final aleatoria de todos los productos de todas las tiendas
+    const allProducts = allProductsByStore.sort(() => Math.random() - 0.5);
 
     // Recalcular resumen
     const totalProducts = allProducts.length;
@@ -369,6 +388,10 @@ ${sanitizedHtml}`
         stores_analyzed: urls.length
       }
     };
+
+    // Guardar en caché
+    cache.set(cacheKey, { data: finalResult, timestamp: Date.now() });
+    console.log('💾 Results cached');
 
     return new Response(JSON.stringify(finalResult), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
