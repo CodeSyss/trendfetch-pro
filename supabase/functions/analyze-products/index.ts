@@ -12,17 +12,130 @@ const productosReferencia: any[] = [];
 const cache = new Map<string, { data: any; timestamp: number }>();
 const CACHE_DURATION = 1000 * 60 * 30; // 30 minutos
 
+// User-Agent pool para rotar
+const userAgents = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15',
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+];
+
+const getRandomUserAgent = () => userAgents[Math.floor(Math.random() * userAgents.length)];
+
+// URLs por defecto para categorías específicas de cada tienda
+// IMPORTANTE: El usuario puede modificar estas URLs para agregar más tiendas o categorías
+const defaultStoreUrls: Record<string, Record<string, Record<string, string[]>>> = {
+  'shein': {
+    'caliente': {
+      'vestidos': ['https://us.shein.com/Women-Dresses-c-1727.html'],
+      'tops': ['https://us.shein.com/Women-Tops-c-1733.html'],
+      'vacaciones': ['https://us.shein.com/Women-Swimwear-c-2193.html', 'https://us.shein.com/Women-Beach-Wear-c-2419.html'],
+      'todos': ['https://us.shein.com/trend-women-clothing-c-2030.html']
+    },
+    'frio': {
+      'tejidos': ['https://us.shein.com/Women-Sweaters-c-1734.html'],
+      'tops': ['https://us.shein.com/Women-Tops-c-1733.html'],
+      'todos': ['https://us.shein.com/Women-Clothing-c-1727.html']
+    },
+    'todos': {
+      'todos': ['https://us.shein.com/trend-women-clothing-c-2030.html', 'https://us.shein.com/Women-New-Arrivals-c-2766.html']
+    }
+  },
+  'zara': {
+    'caliente': {
+      'vestidos': ['https://www.zara.com/es/es/mujer-vestidos-l1066.html'],
+      'tops': ['https://www.zara.com/es/es/mujer-camisas-blusas-l1217.html'],
+      'todos': ['https://www.zara.com/es/es/mujer-novedades-l1180.html']
+    },
+    'frio': {
+      'tejidos': ['https://www.zara.com/es/es/mujer-punto-l1152.html'],
+      'todos': ['https://www.zara.com/es/es/mujer-ropa-l1055.html']
+    },
+    'todos': {
+      'todos': ['https://www.zara.com/es/es/mujer-novedades-l1180.html', 'https://www.zara.com/es/es/mujer-ropa-l1055.html']
+    }
+  },
+  'hm': {
+    'caliente': {
+      'vestidos': ['https://www2.hm.com/es_es/mujer/compra-por-producto/vestidos.html'],
+      'tops': ['https://www2.hm.com/es_es/mujer/compra-por-producto/tops-y-camisetas.html'],
+      'todos': ['https://www2.hm.com/es_es/mujer/compra-por-producto.html']
+    },
+    'frio': {
+      'tejidos': ['https://www2.hm.com/es_es/mujer/compra-por-producto/punto.html'],
+      'todos': ['https://www2.hm.com/es_es/mujer/compra-por-producto.html']
+    },
+    'todos': {
+      'todos': ['https://www2.hm.com/es_es/mujer/novedades.html', 'https://www2.hm.com/es_es/mujer/compra-por-producto.html']
+    }
+  },
+  'forever21': {
+    'caliente': {
+      'vestidos': ['https://www.forever21.com/us/shop/catalog/category/f21/dress'],
+      'tops': ['https://www.forever21.com/us/shop/catalog/category/f21/top'],
+      'todos': ['https://www.forever21.com/us/shop/catalog/category/f21/app-main']
+    },
+    'frio': {
+      'tejidos': ['https://www.forever21.com/us/shop/catalog/category/f21/sweater'],
+      'todos': ['https://www.forever21.com/us/shop/catalog/category/f21/app-main']
+    },
+    'todos': {
+      'todos': ['https://www.forever21.com/us/shop/catalog/category/f21/new-arrivals']
+    }
+  }
+};
+
 // Función para obtener el nombre de la tienda desde la URL
 const getStoreName = (url: string): string => {
   try {
     const hostname = new URL(url).hostname;
-    // Extraer el nombre principal del dominio (ej: zara.com -> zara, shein.com -> shein)
     const parts = hostname.split('.');
     const storeName = parts.length >= 2 ? parts[parts.length - 2] : hostname;
     return storeName.toLowerCase();
   } catch {
     return 'unknown';
   }
+};
+
+// Función para detectar si es una homepage y obtener URLs específicas
+const getSpecificUrls = (url: string, season: string, categories: string): string[] => {
+  const storeName = getStoreName(url);
+  const urlObj = new URL(url);
+  const pathname = urlObj.pathname;
+  
+  // Detectar si es homepage (ruta raíz o muy corta)
+  const isHomepage = pathname === '/' || pathname === '' || pathname.length < 10;
+  
+  if (!isHomepage) {
+    console.log(`✓ URL específica detectada para ${storeName}: ${url}`);
+    return [url]; // Ya es una URL específica
+  }
+  
+  console.log(`🏠 Homepage detectada para ${storeName}, buscando URLs específicas...`);
+  
+  // Buscar URLs por defecto para esta tienda
+  const storeUrls = defaultStoreUrls[storeName];
+  if (!storeUrls) {
+    console.log(`⚠️ No hay URLs configuradas para ${storeName}, usando homepage`);
+    return [url];
+  }
+  
+  // Buscar por temporada y categoría
+  const seasonUrls = storeUrls[season] || storeUrls['todos'];
+  if (!seasonUrls) {
+    console.log(`⚠️ No hay URLs para temporada ${season} en ${storeName}`);
+    return [url];
+  }
+  
+  const categoryUrls = seasonUrls[categories] || seasonUrls['todos'];
+  if (!categoryUrls || categoryUrls.length === 0) {
+    console.log(`⚠️ No hay URLs para categoría ${categories} en ${storeName}`);
+    return [url];
+  }
+  
+  console.log(`✅ URLs específicas encontradas para ${storeName}: ${categoryUrls.length} URLs`);
+  return categoryUrls;
 };
 
 serve(async (req) => {
@@ -32,10 +145,19 @@ serve(async (req) => {
 
   try {
     const { urls, season = 'todos', categories = 'todos' } = await req.json();
-    console.log('Analyzing URLs:', urls, 'Season:', season, 'Categories:', categories);
+    console.log('📥 Input URLs:', urls, 'Season:', season, 'Categories:', categories);
+
+    // Expandir URLs: si es homepage, reemplazar con URLs específicas
+    const expandedUrls: string[] = [];
+    for (const url of urls) {
+      const specificUrls = getSpecificUrls(url, season, categories);
+      expandedUrls.push(...specificUrls);
+    }
+    
+    console.log('🔍 URLs a analizar después de expansión:', expandedUrls);
 
     // Verificar caché primero
-    const cacheKey = `${urls.join('|')}|${season}|${categories}`;
+    const cacheKey = `${expandedUrls.join('|')}|${season}|${categories}`;
     const cached = cache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
       console.log('🎯 Returning cached results');
@@ -44,7 +166,7 @@ serve(async (req) => {
       });
     }
 
-    if (!urls || urls.length === 0) {
+    if (!expandedUrls || expandedUrls.length === 0) {
       throw new Error('At least one URL is required');
     }
 
@@ -53,19 +175,41 @@ serve(async (req) => {
       throw new Error('LOVABLE_API_KEY not configured');
     }
 
-    // Función para validar si una imagen es accesible
+    // Función para validar si una imagen es accesible (validación menos estricta)
     const validateImage = async (imageUrl: string): Promise<boolean> => {
       try {
         const response = await fetch(imageUrl, { 
           method: 'HEAD',
           headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-          }
+            'User-Agent': getRandomUserAgent()
+          },
+          signal: AbortSignal.timeout(5000) // timeout de 5 segundos
         });
-        const contentType = response.headers.get('content-type');
-        return response.ok && (contentType?.startsWith('image/') ?? false);
-      } catch {
+        
+        // Validación menos estricta: aceptar 200-399 (incluso redirects)
+        if (response.status >= 200 && response.status < 400) {
+          const contentType = response.headers.get('content-type');
+          // Si no hay content-type o es una imagen, aceptar
+          if (!contentType || contentType.startsWith('image/')) {
+            return true;
+          }
+        }
         return false;
+      } catch (error) {
+        // Si falla HEAD, intentar con GET pero solo primeros bytes
+        try {
+          const response = await fetch(imageUrl, {
+            method: 'GET',
+            headers: {
+              'User-Agent': getRandomUserAgent(),
+              'Range': 'bytes=0-1023' // Solo primeros 1KB
+            },
+            signal: AbortSignal.timeout(5000)
+          });
+          return response.status >= 200 && response.status < 400;
+        } catch {
+          return false;
+        }
       }
     };
 
@@ -104,8 +248,8 @@ serve(async (req) => {
       return unique;
     };
 
-    // Procesar todas las URLs en paralelo
-    const analysisPromises = urls.map(async (url: string) => {
+    // Procesar todas las URLs expandidas en paralelo
+    const analysisPromises = expandedUrls.map(async (url: string) => {
       try {
         const storeName = getStoreName(url);
         console.log(`🏪 Analyzing store: ${storeName}`);
@@ -128,10 +272,13 @@ serve(async (req) => {
 
         console.log(`📦 Productos del catálogo filtrados para ${storeName}: ${productosCatalogo.length}`);
 
-        // Obtén y sanitiza HTML de la página con headers mejorados
+        // Delay aleatorio entre 100-500ms para evitar rate limiting
+        await new Promise(resolve => setTimeout(resolve, 100 + Math.random() * 400));
+
+        // Obtén y sanitiza HTML de la página con headers mejorados y user-agent rotativo
         const pageResponse = await fetch(url, {
           headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'User-Agent': getRandomUserAgent(),
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
             'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
             'Accept-Encoding': 'gzip, deflate, br',
@@ -140,14 +287,15 @@ serve(async (req) => {
             'Sec-Fetch-Dest': 'document',
             'Sec-Fetch-Mode': 'navigate',
             'Sec-Fetch-Site': 'none',
-            'Upgrade-Insecure-Requests': '1'
+            'Upgrade-Insecure-Requests': '1',
+            'Referer': new URL(url).origin
           },
           redirect: 'follow'
         });
         
         if (!pageResponse.ok) {
           console.error(`Error fetching ${url}: ${pageResponse.status}`);
-          return { url, products: [] };
+          return { url, products: [], storeName };
         }
         
         const rawHtml = await pageResponse.text();
@@ -291,8 +439,9 @@ ${sanitizedHtml}`
         
         return { url, products: topProducts, storeName };
       } catch (error) {
+        const storeName = getStoreName(url);
         console.error(`Error processing ${url}:`, error);
-        return { url, products: [] };
+        return { url, products: [], storeName };
       }
     });
 
@@ -304,6 +453,9 @@ ${sanitizedHtml}`
     
     for (const result of allResults) {
       const storeName = result.storeName;
+      
+      // Skip si no hay storeName
+      if (!storeName) continue;
       
       // Filtrar productos del catálogo para esta tienda específica
       const storeProducts = productosReferencia.filter(producto => {
@@ -348,6 +500,10 @@ ${sanitizedHtml}`
     
     for (const result of allResults) {
       const storeName = result.storeName;
+      
+      // Skip si no hay storeName
+      if (!storeName) continue;
+      
       const aiProducts = result.products.map((p: any) => ({
         title: p.title,
         price: p.price,
@@ -379,13 +535,13 @@ ${sanitizedHtml}`
     const recommendedImport = allProducts.filter((p: any) => p.priority === "high").length;
 
     const finalResult = {
-      urls: urls,
+      urls: expandedUrls,
       products: allProducts,
       summary: {
         total_products: totalProducts,
         avg_trend_score: Number(avgScore.toFixed(1)),
         recommended_import: recommendedImport,
-        stores_analyzed: urls.length
+        stores_analyzed: expandedUrls.length
       }
     };
 
