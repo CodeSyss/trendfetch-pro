@@ -143,7 +143,7 @@ export const ResultsDisplay = ({ results }: ResultsDisplayProps) => {
         {results.products.map((product, index) => (
           <Card key={index} className="p-6 hover:shadow-xl transition-all border-2 hover:border-primary/30 relative">
             {product.image && (
-              <div className="mb-4 rounded-lg overflow-hidden bg-muted aspect-square">
+              <div data-img-container className="mb-4 rounded-lg overflow-hidden bg-muted aspect-square">
                 <img
                   src={proxiedImage(makeAbsolute(product.image))}
                   alt={product.title}
@@ -156,7 +156,10 @@ export const ResultsDisplay = ({ results }: ResultsDisplayProps) => {
                       e.currentTarget.dataset.fallback = "direct";
                       e.currentTarget.src = direct;
                     } else {
-                      e.currentTarget.src = "/placeholder.svg";
+                      const container = e.currentTarget.closest('[data-img-container]') as HTMLElement | null;
+                      if (container) {
+                        container.style.display = 'none';
+                      }
                     }
                   }}
                 />
