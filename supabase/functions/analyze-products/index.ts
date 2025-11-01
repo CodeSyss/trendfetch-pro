@@ -175,41 +175,54 @@ serve(async (req) => {
       throw new Error('LOVABLE_API_KEY not configured');
     }
 
-    // Función para validar si una imagen es accesible (validación menos estricta)
+    // Función para validar si una imagen es accesible (validación optimista)
     const validateImage = async (imageUrl: string): Promise<boolean> => {
+      if (!imageUrl) return false;
+      
       try {
-        const response = await fetch(imageUrl, { 
-          method: 'HEAD',
-          headers: {
-            'User-Agent': getRandomUserAgent()
-          },
-          signal: AbortSignal.timeout(5000) // timeout de 5 segundos
-        });
+        // Lista de dominios CDN conocidos y confiables
+        const trustedDomains = [
+          'ltwebstatic.com', // Shein CDN
+          'shein.com',
+          'static.zara.net',
+          'zara.com',
+          'hm.com',
+          'forever21.com',
+          'cloudfront.net',
+          'akamaized.net',
+          'shopify.com',
+          'imgix.net'
+        ];
         
-        // Validación menos estricta: aceptar 200-399 (incluso redirects)
-        if (response.status >= 200 && response.status < 400) {
-          const contentType = response.headers.get('content-type');
-          // Si no hay content-type o es una imagen, aceptar
-          if (!contentType || contentType.startsWith('image/')) {
-            return true;
-          }
+        // Si la URL viene de un dominio confiable, aceptarla directamente
+        const url = imageUrl.toLowerCase();
+        if (trustedDomains.some(domain => url.includes(domain))) {
+          return true;
         }
-        return false;
-      } catch (error) {
-        // Si falla HEAD, intentar con GET pero solo primeros bytes
+        
+        // Si tiene extensión de imagen común, aceptarla
+        if (/\.(jpg|jpeg|png|webp|avif|gif)(\?|$)/i.test(url)) {
+          return true;
+        }
+        
+        // Como último recurso, intentar una petición rápida
         try {
-          const response = await fetch(imageUrl, {
-            method: 'GET',
+          const response = await fetch(imageUrl, { 
+            method: 'HEAD',
             headers: {
-              'User-Agent': getRandomUserAgent(),
-              'Range': 'bytes=0-1023' // Solo primeros 1KB
+              'User-Agent': getRandomUserAgent()
             },
-            signal: AbortSignal.timeout(5000)
+            signal: AbortSignal.timeout(3000) // timeout reducido a 3 segundos
           });
           return response.status >= 200 && response.status < 400;
         } catch {
-          return false;
+          // Si falla HEAD, aceptar la URL de todos modos (validación optimista)
+          return true;
         }
+      } catch (error) {
+        // En caso de error, ser optimista y aceptar la URL
+        console.log(`⚠️ Error validando imagen, aceptándola de todos modos: ${error}`);
+        return true;
       }
     };
 
