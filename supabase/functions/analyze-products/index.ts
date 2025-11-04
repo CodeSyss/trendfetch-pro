@@ -288,51 +288,87 @@ serve(async (req) => {
         // Delay aleatorio entre 100-500ms para evitar rate limiting
         await new Promise(resolve => setTimeout(resolve, 100 + Math.random() * 400));
 
-        // Fase 1: Obtener HTML usando Oxylabs con renderizado JavaScript
-        const oxyUsername = Deno.env.get('OXYLABS_USERNAME');
-        const oxyPassword = Deno.env.get('OXYLABS_PASSWORD');
-        
-        if (!oxyUsername || !oxyPassword) {
-          console.error('❌ Oxylabs credentials not configured');
-          return { url, products: [], storeName };
+        let rawHtml = '';
+        let usedOxylabs = false;
+
+        // Estrategia Híbrida: Intentar fetch normal primero
+        try {
+          console.log(`🔄 Trying normal fetch first: ${url}`);
+          const pageResponse = await fetch(url, {
+            headers: {
+              'User-Agent': getRandomUserAgent(),
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+              'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+              'Cache-Control': 'no-cache',
+              'Referer': new URL(url).origin
+            },
+            redirect: 'follow'
+          });
+
+          if (pageResponse.ok) {
+            rawHtml = await pageResponse.text();
+            console.log(`✅ Normal fetch successful: ${rawHtml.length} characters`);
+            
+            // Validar si el HTML tiene contenido útil (productos)
+            const hasProducts = rawHtml.includes('price') || rawHtml.includes('product') || 
+                               rawHtml.includes('item') || rawHtml.includes('$');
+            
+            if (!hasProducts || rawHtml.length < 5000) {
+              console.log(`⚠️ HTML seems empty or lacks products, switching to Oxylabs`);
+              rawHtml = ''; // Forzar uso de Oxylabs
+            }
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          console.log(`⚠️ Normal fetch failed: ${errorMsg}, will try Oxylabs`);
         }
 
-        // Preparar autenticación Basic Auth
-        const authString = btoa(`${oxyUsername}:${oxyPassword}`);
-        
-        console.log(`🔄 Fetching with Oxylabs (JavaScript rendering): ${url}`);
-        
-        const oxyResponse = await fetch('https://realtime.oxylabs.io/v1/queries', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Basic ${authString}`
-          },
-          body: JSON.stringify({
-            source: 'universal',
-            url: url,
-            render: 'html',
-            parse: false,
-            user_agent_type: 'desktop_chrome',
-            geo_location: 'United States'
-          })
-        });
+        // Si fetch normal falló, usar Oxylabs
+        if (!rawHtml) {
+          const oxyUsername = Deno.env.get('OXYLABS_USERNAME');
+          const oxyPassword = Deno.env.get('OXYLABS_PASSWORD');
+          
+          if (!oxyUsername || !oxyPassword) {
+            console.error('❌ Oxylabs credentials not configured and fetch failed');
+            return { url, products: [], storeName };
+          }
 
-        if (!oxyResponse.ok) {
-          const errorText = await oxyResponse.text();
-          console.error(`❌ Oxylabs error for ${url}: ${oxyResponse.status} - ${errorText}`);
-          return { url, products: [], storeName };
+          const authString = btoa(`${oxyUsername}:${oxyPassword}`);
+          console.log(`🔄 Fetching with Oxylabs (JavaScript rendering): ${url}`);
+          
+          const oxyResponse = await fetch('https://realtime.oxylabs.io/v1/queries', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Basic ${authString}`
+            },
+            body: JSON.stringify({
+              source: 'universal',
+              url: url,
+              render: 'html',
+              parse: false,
+              user_agent_type: 'desktop_chrome',
+              geo_location: 'United States'
+            })
+          });
+
+          if (!oxyResponse.ok) {
+            const errorText = await oxyResponse.text();
+            console.error(`❌ Oxylabs error for ${url}: ${oxyResponse.status} - ${errorText}`);
+            return { url, products: [], storeName };
+          }
+
+          const oxyData = await oxyResponse.json();
+          
+          if (!oxyData.results || oxyData.results.length === 0 || !oxyData.results[0].content) {
+            console.error(`❌ No content returned from Oxylabs for ${url}`);
+            return { url, products: [], storeName };
+          }
+
+          rawHtml = oxyData.results[0].content;
+          usedOxylabs = true;
+          console.log(`✅ Oxylabs fetch successful: ${rawHtml.length} characters`);
         }
-
-        const oxyData = await oxyResponse.json();
-        
-        if (!oxyData.results || oxyData.results.length === 0 || !oxyData.results[0].content) {
-          console.error(`❌ No content returned from Oxylabs for ${url}`);
-          return { url, products: [], storeName };
-        }
-
-        const rawHtml = oxyData.results[0].content;
-        console.log(`✅ Successfully fetched ${rawHtml.length} characters from ${url}`);
         const sanitizedHtml = rawHtml
           .replace(/<script[\s\S]*?<\/script>/gi, ' ')
           .replace(/<style[\s\S]*?<\/style>/gi, ' ')
@@ -349,7 +385,7 @@ serve(async (req) => {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            model: 'google/gemini-2.5-pro',
+            model: 'google/gemini-2.5-flash',
             messages: [
               {
                 role: 'system',
@@ -431,8 +467,14 @@ ${sanitizedHtml}`
         });
 
         if (!aiResponse.ok) {
-          console.error(`AI API error for ${url}:`, aiResponse.status);
-          return { url, products: [] };
+          const errorText = await aiResponse.text();
+          console.error(`AI API error for ${url}: ${aiResponse.status} ${errorText}`);
+          
+          if (aiResponse.status === 402) {
+            console.error('❌ Sin créditos de Lovable AI. Recarga créditos en Settings -> Workspace -> Usage');
+          }
+          
+          return { url, products: [], storeName };
         }
 
         const aiData = await aiResponse.json();
