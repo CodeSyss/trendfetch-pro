@@ -288,30 +288,51 @@ serve(async (req) => {
         // Delay aleatorio entre 100-500ms para evitar rate limiting
         await new Promise(resolve => setTimeout(resolve, 100 + Math.random() * 400));
 
-        // Obtén y sanitiza HTML de la página con headers mejorados y user-agent rotativo
-        const pageResponse = await fetch(url, {
-          headers: {
-            'User-Agent': getRandomUserAgent(),
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-            'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'none',
-            'Upgrade-Insecure-Requests': '1',
-            'Referer': new URL(url).origin
-          },
-          redirect: 'follow'
-        });
+        // Fase 1: Obtener HTML usando Oxylabs con renderizado JavaScript
+        const oxyUsername = Deno.env.get('OXYLABS_USERNAME');
+        const oxyPassword = Deno.env.get('OXYLABS_PASSWORD');
         
-        if (!pageResponse.ok) {
-          console.error(`Error fetching ${url}: ${pageResponse.status}`);
+        if (!oxyUsername || !oxyPassword) {
+          console.error('❌ Oxylabs credentials not configured');
           return { url, products: [], storeName };
         }
+
+        // Preparar autenticación Basic Auth
+        const authString = btoa(`${oxyUsername}:${oxyPassword}`);
         
-        const rawHtml = await pageResponse.text();
+        console.log(`🔄 Fetching with Oxylabs (JavaScript rendering): ${url}`);
+        
+        const oxyResponse = await fetch('https://realtime.oxylabs.io/v1/queries', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Basic ${authString}`
+          },
+          body: JSON.stringify({
+            source: 'universal',
+            url: url,
+            render: 'html',
+            parse: false,
+            user_agent_type: 'desktop_chrome',
+            geo_location: 'United States'
+          })
+        });
+
+        if (!oxyResponse.ok) {
+          const errorText = await oxyResponse.text();
+          console.error(`❌ Oxylabs error for ${url}: ${oxyResponse.status} - ${errorText}`);
+          return { url, products: [], storeName };
+        }
+
+        const oxyData = await oxyResponse.json();
+        
+        if (!oxyData.results || oxyData.results.length === 0 || !oxyData.results[0].content) {
+          console.error(`❌ No content returned from Oxylabs for ${url}`);
+          return { url, products: [], storeName };
+        }
+
+        const rawHtml = oxyData.results[0].content;
+        console.log(`✅ Successfully fetched ${rawHtml.length} characters from ${url}`);
         const sanitizedHtml = rawHtml
           .replace(/<script[\s\S]*?<\/script>/gi, ' ')
           .replace(/<style[\s\S]*?<\/style>/gi, ' ')
