@@ -171,9 +171,8 @@ serve(async (req) => {
     }
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    const HAS_AI = !!LOVABLE_API_KEY;
-    if (!HAS_AI) {
-      console.warn('⚠️ LOVABLE_API_KEY not configured. Falling back to basic HTML extraction.');
+    if (!LOVABLE_API_KEY) {
+      throw new Error('LOVABLE_API_KEY not configured');
     }
 
     // Función para validar si una imagen es accesible (validación optimista)
@@ -260,68 +259,6 @@ serve(async (req) => {
       }
       
       return unique;
-    };
-
-    // Helper para resolver URLs absolutas de imágenes
-    const resolveUrl = (src: string, baseUrl: string) => {
-      try {
-        if (!src) return '';
-        if (src.startsWith('http')) return src;
-        if (src.startsWith('//')) return 'https:' + src;
-        if (src.startsWith('/')) return baseUrl + src;
-        return baseUrl + (baseUrl.endsWith('/') ? '' : '/') + src;
-      } catch {
-        return src;
-      }
-    };
-
-    // Fallback básico sin IA: extrae productos por regex de HTML
-    const basicExtractProducts = async (html: string, baseUrl: string, storeName: string) => {
-      const products: any[] = [];
-      const seen = new Set<string>();
-      const imgRegex = /<img[^>]*?(?:alt="([^"]*)")?[^>]*?src="([^"]+)"[^>]*?>/gi;
-      const priceRegex = /(US?\$|USD|\$)\s?\d{1,4}(?:[.,]\d{2})?/i;
-
-      let m: RegExpExecArray | null;
-      let idx = 0;
-      while ((m = imgRegex.exec(html)) && products.length < 18) {
-        idx++;
-        const alt = (m[1] || '').trim();
-        const src = m[2];
-        const image = resolveUrl(src, baseUrl);
-
-        const pos = m.index;
-        const win = html.slice(Math.max(0, pos - 300), Math.min(html.length, pos + 300));
-        const priceMatch = win.match(priceRegex);
-        if (!priceMatch) continue;
-
-        const title = alt && alt.length >= 3 ? alt : `Producto ${idx}`;
-        const key = title.toLowerCase();
-        if (seen.has(key)) continue;
-
-        // Validar imagen rápido
-        const isValid = await validateImage(image);
-        if (!isValid) continue;
-
-        seen.add(key);
-        const price = priceMatch[0].replace('USD', '$').replace('US$', '$');
-        const trend = 7.5;
-        const priority = trend >= 9 ? 'high' : trend >= 7.5 ? 'medium' : 'low';
-
-        products.push({
-          title,
-          price,
-          colors: [],
-          sizes: [],
-          image,
-          trend_score: trend,
-          recommendation: `Seleccionado por coincidencia básica en ${storeName}`,
-          priority
-        });
-      }
-
-      // Limitar a 12 para consistencia
-      return products.slice(0, 12);
     };
 
     // Procesar todas las URLs expandidas en paralelo
@@ -440,22 +377,19 @@ serve(async (req) => {
           .slice(0, 180000);
         const baseUrl = new URL(url).origin;
 
-        // Análisis con IA usando Lovable AI (si hay clave). Si falla o no hay créditos, usamos fallback básico
-        let finalProducts: any[] = [];
-
-        if (HAS_AI) {
-          const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              model: 'google/gemini-2.5-flash',
-              messages: [
-                {
-                  role: 'system',
-                  content: `Eres un experto analista de e-commerce y tendencias de moda femenina con experiencia en merchandising y análisis de tendencias.
+        // Análisis con IA usando Lovable AI
+        const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'google/gemini-2.5-flash',
+            messages: [
+              {
+                role: 'system',
+                content: `Eres un experto analista de e-commerce y tendencias de moda femenina con experiencia en merchandising y análisis de tendencias.
 
 Tu tarea: EXTRAER entre 15-18 productos REALES de ropa de mujer de la página web proporcionada. Extraeré más productos para compensar posibles imágenes inválidas.
 
@@ -513,10 +447,10 @@ ${categories === 'vestidos' ? '👗 VESTIDOS: Todos los estilos - casuales, eleg
 ${categories === 'pantalones' ? '👖 PANTALONES: Jeans, leggings, palazzo, cargo, formales, casuales.' : ''}
 ${categories === 'conjuntos' ? '👔 CONJUNTOS: Coordinados de 2-3 piezas, matching sets, outfits completos.' : ''}
 ${season === 'todos' && categories === 'todos' ? '🌈 TODO: Selecciona lo mejor de la tienda, variedad de estilos y temporadas.' : ''}`
-                },
-                {
-                  role: 'user',
-                  content: `Analiza esta tienda (${storeName.toUpperCase()}) y extrae EXACTAMENTE 15-18 productos reales de alta calidad.
+              },
+              {
+                role: 'user',
+                content: `Analiza esta tienda (${storeName.toUpperCase()}) y extrae EXACTAMENTE 15-18 productos reales de alta calidad.
 
 TIENDA: ${storeName.toUpperCase()}
 TEMPORADA: ${season === 'caliente' ? 'CLIMA CALIENTE' : season === 'frio' ? 'CLIMA FRÍO' : 'TODAS'}
@@ -526,51 +460,59 @@ URL: ${url}
 Base URL: ${baseUrl}
 HTML:
 ${sanitizedHtml}`
-                }
-              ],
-            }),
-          });
-
-          if (aiResponse.ok) {
-            const aiData = await aiResponse.json();
-            let resultText = aiData.choices[0].message.content;
-            resultText = resultText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-            const aiResult = JSON.parse(resultText);
-
-            // Validar imágenes y filtrar
-            const validated: any[] = [];
-            for (const product of aiResult.products) {
-              if (product.image) {
-                const isValid = await validateImage(product.image);
-                if (isValid) {
-                  validated.push({ ...product, store: storeName });
-                }
               }
-            }
-            const unique = removeDuplicates(validated);
-            finalProducts = unique
-              .sort((a, b) => b.trend_score - a.trend_score)
-              .slice(0, 10);
+            ],
+          }),
+        });
 
-            console.log(`📊 AI OK: ${aiResult.products.length} → ${finalProducts.length} mejores`);
-          } else {
-            const errorText = await aiResponse.text();
-            console.error(`AI API error for ${url}: ${aiResponse.status} ${errorText}`);
-            if (aiResponse.status === 402) {
-              console.error('❌ Sin créditos de Lovable AI. Usando fallback básico.');
-            }
+        if (!aiResponse.ok) {
+          const errorText = await aiResponse.text();
+          console.error(`AI API error for ${url}: ${aiResponse.status} ${errorText}`);
+          
+          if (aiResponse.status === 402) {
+            console.error('❌ Sin créditos de Lovable AI. Recarga créditos en Settings -> Workspace -> Usage');
           }
-        } else {
-          console.log('⏭️ Sin LOVABLE_API_KEY, saltando IA y usando fallback básico.');
+          
+          return { url, products: [], storeName };
         }
 
-        // Fallback básico si IA no produjo resultados
-        if (finalProducts.length === 0) {
-          console.log('🧰 Fallback: extracción básica por HTML');
-          finalProducts = await basicExtractProducts(sanitizedHtml, baseUrl, storeName);
+        const aiData = await aiResponse.json();
+        let resultText = aiData.choices[0].message.content;
+        resultText = resultText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        
+        const aiResult = JSON.parse(resultText);
+        
+        // Validar imágenes de productos y filtrar los que no tienen imagen válida
+        const validatedProducts = [];
+        for (const product of aiResult.products) {
+          if (product.image) {
+            const isValid = await validateImage(product.image);
+            if (isValid) {
+              // Agregar el campo tienda al producto
+              validatedProducts.push({
+                ...product,
+                store: storeName
+              });
+              console.log(`✓ Imagen válida: ${product.title}`);
+            } else {
+              console.log(`✗ Imagen inválida, producto omitido: ${product.title}`);
+            }
+          } else {
+            console.log(`✗ Sin imagen, producto omitido: ${product.title}`);
+          }
         }
-
-        return { url, products: finalProducts, storeName };
+        
+        // Eliminar duplicados
+        const uniqueProducts = removeDuplicates(validatedProducts);
+        
+        // Ordenar por trend_score y tomar los 10 mejores
+        const topProducts = uniqueProducts
+          .sort((a, b) => b.trend_score - a.trend_score)
+          .slice(0, 10);
+        
+        console.log(`📊 Productos procesados: ${aiResult.products.length} → ${validatedProducts.length} válidos → ${uniqueProducts.length} únicos → ${topProducts.length} mejores`);
+        
+        return { url, products: topProducts, storeName };
       } catch (error) {
         const storeName = getStoreName(url);
         console.error(`Error processing ${url}:`, error);
@@ -664,12 +606,8 @@ ${sanitizedHtml}`
 
     // Recalcular resumen
     const totalProducts = allProducts.length;
-    const avgScore = totalProducts > 0 
-      ? allProducts.reduce((sum: number, p: any) => sum + p.trend_score, 0) / totalProducts
-      : 0;
-    const recommendedImport = totalProducts > 0 
-      ? allProducts.filter((p: any) => p.priority === "high").length
-      : 0;
+    const avgScore = allProducts.reduce((sum: number, p: any) => sum + p.trend_score, 0) / totalProducts;
+    const recommendedImport = allProducts.filter((p: any) => p.priority === "high").length;
 
     const finalResult = {
       urls: expandedUrls,
