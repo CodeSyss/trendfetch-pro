@@ -225,8 +225,8 @@ serve(async (req) => {
   }
 
   try {
-    const { urls, season = 'todos', categories = 'todos' } = await req.json();
-    console.log('📥 Input URLs:', urls, 'Season:', season, 'Categories:', categories);
+    const { urls, season = 'todos', categories = 'todos', language = 'es' } = await req.json();
+    console.log('📥 Input URLs:', urls, 'Season:', season, 'Categories:', categories, 'Lang:', language);
 
     // Expandir URLs: si es homepage, reemplazar con URLs específicas
     const expandedUrls: string[] = [];
@@ -251,47 +251,143 @@ serve(async (req) => {
       throw new Error('At least one URL is required');
     }
 
-    // Procesar todas las URLs expandidas
+    // Procesar todas las URLs expandidas usando Lovable AI
     const analysisPromises = expandedUrls.map(async (url: string) => {
       try {
         const storeName = getStoreName(url);
         console.log(`🏪 Analyzing store: ${storeName}`);
 
-        // Filtrar productos del catálogo según temporada, categoría Y tienda
-        let productosCatalogo = productosReferencia.filter(producto => {
-          let matchTemporada = season === 'todos' || 
-                              producto.temporada === 'todo el año' || 
-                              producto.temporada === season;
-          
-          let matchCategoria = categories === 'todos' || 
-                              producto.categoria?.toLowerCase().includes(categories.toLowerCase()) ||
-                              categories.toLowerCase().includes(producto.categoria?.toLowerCase());
-          
-          // Solo incluir productos de la misma tienda o productos sin tienda especificada
-          let matchTienda = !producto.tienda || producto.tienda.toLowerCase() === storeName;
-          
+        // Preparar productos de referencia para el prompt
+        const productosCatalogo = productosReferencia.filter((producto) => {
+          const matchTemporada = season === 'todos' || producto.temporada === 'todo el año' || producto.temporada === season;
+          const matchCategoria = categories === 'todos' ||
+            producto.categoria?.toLowerCase().includes(categories.toLowerCase()) ||
+            categories.toLowerCase().includes(producto.categoria?.toLowerCase());
+          const matchTienda = !producto.tienda || producto.tienda.toLowerCase() === storeName;
           return matchTemporada && matchCategoria && matchTienda;
         });
 
-        console.log(`📦 Productos del catálogo filtrados para ${storeName}: ${productosCatalogo.length}`);
+        // 1) Intentar fetch normal
+        let rawHtml = '';
+        try {
+          const acceptLang = language === 'en' ? 'en-US,en;q=0.9' : language === 'zh' ? 'zh-CN,zh;q=0.9,en;q=0.7' : 'es-ES,es;q=0.9,en;q=0.8';
+          const resp = await fetch(url, {
+            headers: {
+              'User-Agent': getRandomUserAgent(),
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+              'Accept-Language': acceptLang,
+              'Cache-Control': 'no-cache',
+              'Referer': new URL(url).origin,
+            },
+            redirect: 'follow',
+          });
+          if (resp.ok) {
+            rawHtml = await resp.text();
+          }
+        } catch (e) {
+          console.log('⚠️ Normal fetch failed, will try Oxylabs if available');
+        }
 
-        // Mapear productos del catálogo al formato esperado
-        const products = productosCatalogo.map((producto, index) => ({
-          title: producto.titulo,
-          price: "Ver tienda",
-          image: `https://via.placeholder.com/400x500/E5DEFF/1A1F2C?text=${encodeURIComponent(producto.titulo)}`,
-          url: url,
-          recommendation: producto.recommendation,
-          trend_score: producto.trend_score,
-          priority: producto.trend_score >= 9 ? "high" : producto.trend_score >= 7.5 ? "medium" : "low",
-          colors: [],
-          sizes: [],
+        // 2) Fallback a Oxylabs si no hay HTML suficiente
+        if (!rawHtml || rawHtml.length < 5000) {
+          const oxyUser = Deno.env.get('OXYLABS_USERNAME');
+          const oxyPass = Deno.env.get('OXYLABS_PASSWORD');
+          if (oxyUser && oxyPass) {
+            const auth = btoa(`${oxyUser}:${oxyPass}`);
+            const oxyResp = await fetch('https://realtime.oxylabs.io/v1/queries', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Basic ${auth}`,
+              },
+              body: JSON.stringify({
+                source: 'universal',
+                url,
+                render: 'html',
+                parse: false,
+                user_agent_type: 'desktop_chrome',
+                geo_location: 'United States',
+              }),
+            });
+            if (oxyResp.ok) {
+              const oxyData = await oxyResp.json();
+              rawHtml = oxyData.results?.[0]?.content || rawHtml;
+            }
+          }
+        }
+
+        const sanitizedHtml = (rawHtml || '')
+          .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+          .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+          .replace(/<!--[\s\S]*?-->/g, ' ')
+          .replace(/\s+/g, ' ')
+          .slice(0, 160000);
+        const baseUrl = new URL(url).origin;
+
+        const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+        if (!LOVABLE_API_KEY) {
+          console.error('❌ LOVABLE_API_KEY no configurada');
+          return { url, products: [], storeName };
+        }
+
+        const langLabel = language === 'en' ? 'English' : language === 'zh' ? '中文' : 'Español';
+
+        const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${LOVABLE_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'google/gemini-2.5-flash',
+            messages: [
+              {
+                role: 'system',
+                content: `Eres un analista experto en e-commerce de moda. Devuelve SOLO JSON válido. La explicación/recommendation debe estar en ${langLabel}.`,
+              },
+              {
+                role: 'user',
+                content: `Extrae 15-18 productos reales de ropa de mujer de la URL. Usa baseUrl para resolver imágenes relativas. Mantén los títulos y precios tal como aparecen. recommendation en ${langLabel}.
+
+URL: ${url}
+Base URL: ${baseUrl}
+
+PRODUCTOS REFERENCIA:\n${productosCatalogo.map(p => `• ${p.titulo} - ${p.recommendation} [${p.trend_score}/10]`).join('\n') || '• (sin referencias)'}
+
+HTML:\n${sanitizedHtml}
+
+Formato exacto:
+{ "url": "${url}", "products": [ { "title": "..", "price": "..", "colors": [".."], "sizes": [".."], "image": "https://..", "trend_score": 8.5, "recommendation": "..", "priority": "high" } ] }`
+              }
+            ],
+          }),
+        });
+
+        if (!response.ok) {
+          const text = await response.text();
+          console.error(`AI error ${response.status}: ${text}`);
+          // Devolver vacío para esta URL, el cliente verá el toast si todas fallan
+          return { url, products: [], storeName };
+        }
+
+        const data = await response.json();
+        let content = data.choices?.[0]?.message?.content || '';
+        content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        const parsed = JSON.parse(content);
+
+        const products = (parsed.products || []).slice(0, 18).map((p: any) => ({
+          title: String(p.title || '').slice(0, 140),
+          price: String(p.price || ''),
+          colors: Array.isArray(p.colors) ? p.colors : [],
+          sizes: Array.isArray(p.sizes) ? p.sizes : [],
+          image: p.image,
+          trend_score: Number(p.trend_score || 0),
+          recommendation: String(p.recommendation || ''),
+          priority: (p.priority === 'high' || p.priority === 'medium') ? p.priority : 'low',
           store: storeName,
-          store_url: url
+          store_url: url,
         }));
 
-        console.log(`✅ Productos de catálogo generados: ${products.length}`);
-        
         return { url, products, storeName };
       } catch (error) {
         const storeName = getStoreName(url);
