@@ -251,98 +251,7 @@ serve(async (req) => {
       throw new Error('At least one URL is required');
     }
 
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY not configured');
-    }
-
-    // Función para validar si una imagen es accesible (validación optimista)
-    const validateImage = async (imageUrl: string): Promise<boolean> => {
-      if (!imageUrl) return false;
-      
-      try {
-        // Lista de dominios CDN conocidos y confiables
-        const trustedDomains = [
-          'ltwebstatic.com', // Shein CDN
-          'shein.com',
-          'static.zara.net',
-          'zara.com',
-          'hm.com',
-          'forever21.com',
-          'cloudfront.net',
-          'akamaized.net',
-          'shopify.com',
-          'imgix.net'
-        ];
-        
-        // Si la URL viene de un dominio confiable, aceptarla directamente
-        const url = imageUrl.toLowerCase();
-        if (trustedDomains.some(domain => url.includes(domain))) {
-          return true;
-        }
-        
-        // Si tiene extensión de imagen común, aceptarla
-        if (/\.(jpg|jpeg|png|webp|avif|gif)(\?|$)/i.test(url)) {
-          return true;
-        }
-        
-        // Como último recurso, intentar una petición rápida
-        try {
-          const response = await fetch(imageUrl, { 
-            method: 'HEAD',
-            headers: {
-              'User-Agent': getRandomUserAgent()
-            },
-            signal: AbortSignal.timeout(3000) // timeout reducido a 3 segundos
-          });
-          return response.status >= 200 && response.status < 400;
-        } catch {
-          // Si falla HEAD, aceptar la URL de todos modos (validación optimista)
-          return true;
-        }
-      } catch (error) {
-        // En caso de error, ser optimista y aceptar la URL
-        console.log(`⚠️ Error validando imagen, aceptándola de todos modos: ${error}`);
-        return true;
-      }
-    };
-
-    // Función para calcular similitud entre títulos (detección de duplicados)
-    const calculateTitleSimilarity = (title1: string, title2: string): number => {
-      const normalize = (str: string) => str.toLowerCase().trim().replace(/[^\w\s]/g, '');
-      const t1 = normalize(title1);
-      const t2 = normalize(title2);
-      
-      if (t1 === t2) return 1.0;
-      
-      const words1 = new Set(t1.split(/\s+/));
-      const words2 = new Set(t2.split(/\s+/));
-      const intersection = [...words1].filter(w => words2.has(w)).length;
-      const union = new Set([...words1, ...words2]).size;
-      
-      return intersection / union;
-    };
-
-    // Función para eliminar duplicados basándose en similitud de títulos
-    const removeDuplicates = (products: any[]): any[] => {
-      const unique: any[] = [];
-      
-      for (const product of products) {
-        const isDuplicate = unique.some(u => 
-          calculateTitleSimilarity(u.title, product.title) > 0.75
-        );
-        
-        if (!isDuplicate) {
-          unique.push(product);
-        } else {
-          console.log(`🔄 Duplicado eliminado: ${product.title}`);
-        }
-      }
-      
-      return unique;
-    };
-
-    // Procesar todas las URLs expandidas en paralelo
+    // Procesar todas las URLs expandidas
     const analysisPromises = expandedUrls.map(async (url: string) => {
       try {
         const storeName = getStoreName(url);
@@ -366,234 +275,24 @@ serve(async (req) => {
 
         console.log(`📦 Productos del catálogo filtrados para ${storeName}: ${productosCatalogo.length}`);
 
-        // Delay aleatorio entre 100-500ms para evitar rate limiting
-        await new Promise(resolve => setTimeout(resolve, 100 + Math.random() * 400));
+        // Mapear productos del catálogo al formato esperado
+        const products = productosCatalogo.map((producto, index) => ({
+          title: producto.titulo,
+          price: "Ver tienda",
+          image: `https://via.placeholder.com/400x500/E5DEFF/1A1F2C?text=${encodeURIComponent(producto.titulo)}`,
+          url: url,
+          recommendation: producto.recommendation,
+          trend_score: producto.trend_score,
+          priority: producto.trend_score >= 9 ? "high" : producto.trend_score >= 7.5 ? "medium" : "low",
+          colors: [],
+          sizes: [],
+          store: storeName,
+          store_url: url
+        }));
 
-        let rawHtml = '';
-        let usedOxylabs = false;
-
-        // Estrategia Híbrida: Intentar fetch normal primero
-        try {
-          console.log(`🔄 Trying normal fetch first: ${url}`);
-          const pageResponse = await fetch(url, {
-            headers: {
-              'User-Agent': getRandomUserAgent(),
-              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-              'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
-              'Cache-Control': 'no-cache',
-              'Referer': new URL(url).origin
-            },
-            redirect: 'follow'
-          });
-
-          if (pageResponse.ok) {
-            rawHtml = await pageResponse.text();
-            console.log(`✅ Normal fetch successful: ${rawHtml.length} characters`);
-            
-            // Validar si el HTML tiene contenido útil (productos)
-            const hasProducts = rawHtml.includes('price') || rawHtml.includes('product') || 
-                               rawHtml.includes('item') || rawHtml.includes('$');
-            
-            if (!hasProducts || rawHtml.length < 5000) {
-              console.log(`⚠️ HTML seems empty or lacks products, switching to Oxylabs`);
-              rawHtml = ''; // Forzar uso de Oxylabs
-            }
-          }
-        } catch (error) {
-          const errorMsg = error instanceof Error ? error.message : String(error);
-          console.log(`⚠️ Normal fetch failed: ${errorMsg}, will try Oxylabs`);
-        }
-
-        // Si fetch normal falló, usar Oxylabs
-        if (!rawHtml) {
-          const oxyUsername = Deno.env.get('OXYLABS_USERNAME');
-          const oxyPassword = Deno.env.get('OXYLABS_PASSWORD');
-          
-          if (!oxyUsername || !oxyPassword) {
-            console.error('❌ Oxylabs credentials not configured and fetch failed');
-            return { url, products: [], storeName };
-          }
-
-          const authString = btoa(`${oxyUsername}:${oxyPassword}`);
-          console.log(`🔄 Fetching with Oxylabs (JavaScript rendering): ${url}`);
-          
-          const oxyResponse = await fetch('https://realtime.oxylabs.io/v1/queries', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Basic ${authString}`
-            },
-            body: JSON.stringify({
-              source: 'universal',
-              url: url,
-              render: 'html',
-              parse: false,
-              user_agent_type: 'desktop_chrome',
-              geo_location: 'United States'
-            })
-          });
-
-          if (!oxyResponse.ok) {
-            const errorText = await oxyResponse.text();
-            console.error(`❌ Oxylabs error for ${url}: ${oxyResponse.status} - ${errorText}`);
-            return { url, products: [], storeName };
-          }
-
-          const oxyData = await oxyResponse.json();
-          
-          if (!oxyData.results || oxyData.results.length === 0 || !oxyData.results[0].content) {
-            console.error(`❌ No content returned from Oxylabs for ${url}`);
-            return { url, products: [], storeName };
-          }
-
-          rawHtml = oxyData.results[0].content;
-          usedOxylabs = true;
-          console.log(`✅ Oxylabs fetch successful: ${rawHtml.length} characters`);
-        }
-        const sanitizedHtml = rawHtml
-          .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-          .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-          .replace(/<!--[\s\S]*?-->/g, ' ')
-          .replace(/\s+/g, ' ')
-          .slice(0, 180000);
-        const baseUrl = new URL(url).origin;
-
-        // Análisis con IA usando Lovable AI
-        const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'google/gemini-2.5-flash',
-            messages: [
-              {
-                role: 'system',
-                content: `Eres un experto analista de e-commerce y tendencias de moda femenina con experiencia en merchandising y análisis de tendencias.
-
-Tu tarea: EXTRAER entre 15-18 productos REALES de ropa de mujer de la página web proporcionada. Extraeré más productos para compensar posibles imágenes inválidas.
-
-PRODUCTOS DE REFERENCIA (úsalos como guía de estilo y tendencias):
-${productosCatalogo.length > 0 
-  ? productosCatalogo.map(p => `• ${p.titulo} - ${p.recommendation} [Score: ${p.trend_score}/10]`).join('\n')
-  : '• No hay productos de referencia para esta tienda aún. Selecciona los mejores productos basándote en tendencias actuales de moda.'
-}
-
-CRITERIOS DE SELECCIÓN (en orden de prioridad):
-1. 🎯 ALINEACIÓN CON REFERENCIAS: Productos que sigan las tendencias y estilos de los productos de referencia
-2. 📸 IMAGEN DE CALIDAD: URLs de imágenes absolutas, claras y funcionales
-3. 💎 CALIDAD DEL PRODUCTO: Diseño moderno, buena presentación, descripción completa
-4. 💰 PRECIO COMPETITIVO: Precios realistas y acordes al mercado
-5. 🌟 VARIEDAD: Diferentes estilos dentro de la tendencia (no todos iguales)
-
-FORMATO JSON (devuelve SOLO esto, sin markdown):
-{
-  "url": "url-analizada",
-  "products": [
-    {
-      "title": "Nombre exacto del producto",
-      "price": "$XXX.XX",
-      "colors": ["color1", "color2"],
-      "sizes": ["S", "M", "L"],
-      "image": "https://dominio.com/ruta/completa/imagen.jpg",
-      "trend_score": 8.5,
-      "recommendation": "Por qué este producto es tendencia y cómo se alinea con las referencias",
-      "priority": "high",
-      "similarity_to_reference": 0.85
-    }
-  ]
-}
-
-REGLAS ESTRICTAS:
-✅ 15-18 productos de ROPA DE MUJER únicamente (vestidos, blusas, pantalones, faldas, tops, suéteres, chamarras)
-✅ Título + precio + imagen son OBLIGATORIOS (si falta algo, omite el producto)
-✅ URLs de imágenes ABSOLUTAS (resuelve relativas con Base URL)
-✅ Colores/tallas: extrae si están visibles, sino deja []
-✅ trend_score: 1-10 basado en modernidad, calidad, alineación con referencias
-✅ priority: "high" (90%+ alineación), "medium" (70-89%), "low" (<70%)
-✅ similarity_to_reference: 0-1 (qué tan similar es a los productos de referencia)
-❌ NO accesorios, zapatos, bolsas, joyería
-❌ NO inventes URLs de imágenes
-❌ NO incluyas productos sin imagen válida
-❌ NO repitas productos similares (evita duplicados)
-
-CONTEXTO DE BÚSQUEDA ESPECÍFICO:
-${season === 'caliente' ? '🌞 CLIMA CALIENTE: Enfócate en prendas ligeras, frescas, transpirables, sin manga o manga corta, colores claros.' : ''}
-${season === 'frio' ? '❄️ CLIMA FRÍO: Prioriza suéteres, manga larga, chamarras, abrigos, capas, tejidos gruesos.' : ''}
-${categories === 'vacaciones' ? '🏖️ VACACIONES: Vestidos playeros, pareos, kaftanes, cover-ups, ropa resort, estampados tropicales, looks casuales de playa.' : ''}
-${categories === 'tejidos' ? '🧶 TEJIDOS: Sweaters, cardigans, vestidos tejidos, tops de punto, texturas artesanales.' : ''}
-${categories === 'tops' ? '👚 TOPS: Blusas, camisas, crop tops, bodysuits, tops casuales y elegantes.' : ''}
-${categories === 'vestidos' ? '👗 VESTIDOS: Todos los estilos - casuales, elegantes, midi, maxi, mini, con estampados o lisos.' : ''}
-${categories === 'pantalones' ? '👖 PANTALONES: Jeans, leggings, palazzo, cargo, formales, casuales.' : ''}
-${categories === 'conjuntos' ? '👔 CONJUNTOS: Coordinados de 2-3 piezas, matching sets, outfits completos.' : ''}
-${season === 'todos' && categories === 'todos' ? '🌈 TODO: Selecciona lo mejor de la tienda, variedad de estilos y temporadas.' : ''}`
-              },
-              {
-                role: 'user',
-                content: `Analiza esta tienda (${storeName.toUpperCase()}) y extrae EXACTAMENTE 15-18 productos reales de alta calidad.
-
-TIENDA: ${storeName.toUpperCase()}
-TEMPORADA: ${season === 'caliente' ? 'CLIMA CALIENTE' : season === 'frio' ? 'CLIMA FRÍO' : 'TODAS'}
-CATEGORÍA: ${categories.toUpperCase()}
-
-URL: ${url}
-Base URL: ${baseUrl}
-HTML:
-${sanitizedHtml}`
-              }
-            ],
-          }),
-        });
-
-        if (!aiResponse.ok) {
-          const errorText = await aiResponse.text();
-          console.error(`AI API error for ${url}: ${aiResponse.status} ${errorText}`);
-          
-          if (aiResponse.status === 402) {
-            console.error('❌ Sin créditos de Lovable AI. Recarga créditos en Settings -> Workspace -> Usage');
-          }
-          
-          return { url, products: [], storeName };
-        }
-
-        const aiData = await aiResponse.json();
-        let resultText = aiData.choices[0].message.content;
-        resultText = resultText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        console.log(`✅ Productos de catálogo generados: ${products.length}`);
         
-        const aiResult = JSON.parse(resultText);
-        
-        // Validar imágenes de productos y filtrar los que no tienen imagen válida
-        const validatedProducts = [];
-        for (const product of aiResult.products) {
-          if (product.image) {
-            const isValid = await validateImage(product.image);
-            if (isValid) {
-              // Agregar el campo tienda al producto
-              validatedProducts.push({
-                ...product,
-                store: storeName
-              });
-              console.log(`✓ Imagen válida: ${product.title}`);
-            } else {
-              console.log(`✗ Imagen inválida, producto omitido: ${product.title}`);
-            }
-          } else {
-            console.log(`✗ Sin imagen, producto omitido: ${product.title}`);
-          }
-        }
-        
-        // Eliminar duplicados
-        const uniqueProducts = removeDuplicates(validatedProducts);
-        
-        // Ordenar por trend_score y tomar los 10 mejores
-        const topProducts = uniqueProducts
-          .sort((a, b) => b.trend_score - a.trend_score)
-          .slice(0, 10);
-        
-        console.log(`📊 Productos procesados: ${aiResult.products.length} → ${validatedProducts.length} válidos → ${uniqueProducts.length} únicos → ${topProducts.length} mejores`);
-        
-        return { url, products: topProducts, storeName };
+        return { url, products, storeName };
       } catch (error) {
         const storeName = getStoreName(url);
         console.error(`Error processing ${url}:`, error);
@@ -604,95 +303,23 @@ ${sanitizedHtml}`
     // Esperar a que todas las URLs se procesen
     const allResults = await Promise.all(analysisPromises);
 
-    // Procesar productos del catálogo por tienda
-    const catalogoProductsByStore = new Map<string, any[]>();
-    
-    for (const result of allResults) {
-      const storeName = result.storeName;
-      
-      // Skip si no hay storeName
-      if (!storeName) continue;
-      
-      // Filtrar productos del catálogo para esta tienda específica
-      const storeProducts = productosReferencia.filter(producto => {
-        let matchTemporada = season === 'todos' || 
-                            producto.temporada === 'todo el año' || 
-                            producto.temporada === season;
-        
-        let matchCategoria = categories === 'todos' || 
-                            producto.categoria?.toLowerCase().includes(categories.toLowerCase()) ||
-                            categories.toLowerCase().includes(producto.categoria?.toLowerCase());
-        
-        let matchTienda = !producto.tienda || producto.tienda.toLowerCase() === storeName;
-        
-        return matchTemporada && matchCategoria && matchTienda;
-      });
 
-      // Validar imágenes del catálogo para esta tienda
-      const catalogoValidated = [];
-      for (const p of storeProducts) {
-        const isValid = await validateImage(p.imagen_url);
-        if (isValid) {
-          catalogoValidated.push({
-            title: p.titulo,
-            price: p.precio,
-            colors: p.colores,
-            sizes: p.tallas,
-            image: p.imagen_url,
-            trend_score: p.trend_score,
-            recommendation: p.recommendation,
-            priority: p.trend_score >= 9 ? "high" : p.trend_score >= 7.5 ? "medium" : "low",
-            store: storeName,
-            store_url: result.url
-          });
-        }
-      }
-      
-      catalogoProductsByStore.set(storeName, catalogoValidated);
-    }
+    // Combinar todos los productos
+    const allProducts = allResults.flatMap(result => result.products);
 
-    // Combinar todos los productos de IA y catálogo por tienda
-    const allProductsByStore: any[] = [];
-    
-    for (const result of allResults) {
-      const storeName = result.storeName;
-      
-      // Skip si no hay storeName
-      if (!storeName) continue;
-      
-      const aiProducts = result.products.map((p: any) => ({
-        title: p.title,
-        price: p.price,
-        colors: p.colors || [],
-        sizes: p.sizes || [],
-        image: p.image,
-        trend_score: p.trend_score,
-        recommendation: p.recommendation,
-        priority: p.priority,
-        store: storeName,
-        store_url: result.url
-      }));
-
-      const catalogoProducts = catalogoProductsByStore.get(storeName) || [];
-      
-      // Mezclar productos de catálogo con productos de IA de forma aleatoria
-      const storeProducts = [...catalogoProducts, ...aiProducts]
-        .sort(() => Math.random() - 0.5);
-      
-      allProductsByStore.push(...storeProducts);
-    }
-
-    // Mezcla final aleatoria de todos los productos de todas las tiendas
-    const allProducts = allProductsByStore.sort(() => Math.random() - 0.5);
+    // Mezcla aleatoria
+    const shuffledProducts = allProducts.sort(() => Math.random() - 0.5);
 
     // Recalcular resumen
-    const totalProducts = allProducts.length;
-    const avgScore = allProducts.reduce((sum: number, p: any) => sum + p.trend_score, 0) / totalProducts;
-    const recommendedImport = allProducts.filter((p: any) => p.priority === "high").length;
+    const totalProducts = shuffledProducts.length;
+    const avgScore = totalProducts > 0 
+      ? shuffledProducts.reduce((sum: number, p: any) => sum + p.trend_score, 0) / totalProducts 
+      : 0;
+    const recommendedImport = shuffledProducts.filter((p: any) => p.priority === "high").length;
 
     const finalResult = {
       urls: expandedUrls,
-      products: allProducts,
+      products: shuffledProducts,
       summary: {
         total_products: totalProducts,
         avg_trend_score: Number(avgScore.toFixed(1)),
