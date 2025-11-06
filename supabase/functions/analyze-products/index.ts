@@ -5,8 +5,89 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Productos de referencia desde el JSON (ahora vacío, el usuario agregará productos)
-const productosReferencia: any[] = [];
+// Productos de referencia para guiar el análisis
+const productosReferencia: any[] = [
+  {
+    "titulo": "Vestido Midi Floral",
+    "recommendation": "Perfecto para primavera/verano con estampados florales modernos",
+    "trend_score": 9.2,
+    "temporada": "caliente",
+    "categoria": "vestidos",
+    "tienda": "shein"
+  },
+  {
+    "titulo": "Top Crop Tejido",
+    "recommendation": "Tendencia en tejidos ligeros para clima cálido",
+    "trend_score": 8.5,
+    "temporada": "caliente",
+    "categoria": "tops",
+    "tienda": "shein"
+  },
+  {
+    "titulo": "Conjunto Playero 2 Piezas",
+    "recommendation": "Ideal para vacaciones de verano, estilo resort",
+    "trend_score": 8.8,
+    "temporada": "caliente",
+    "categoria": "vacaciones",
+    "tienda": "shein"
+  },
+  {
+    "titulo": "Suéter Oversized",
+    "recommendation": "Tejido grueso perfecto para otoño/invierno",
+    "trend_score": 9.0,
+    "temporada": "frio",
+    "categoria": "tejidos",
+    "tienda": "zara"
+  },
+  {
+    "titulo": "Blazer Estructurado",
+    "recommendation": "Pieza versátil para todo el año, estilo corporativo moderno",
+    "trend_score": 8.7,
+    "temporada": "todo el año",
+    "categoria": "tops",
+    "tienda": "zara"
+  },
+  {
+    "titulo": "Vestido Camisero",
+    "recommendation": "Clásico atemporal, funciona en cualquier temporada",
+    "trend_score": 8.9,
+    "temporada": "todo el año",
+    "categoria": "vestidos",
+    "tienda": "hm"
+  },
+  {
+    "titulo": "Pantalón Wide Leg",
+    "recommendation": "Tendencia actual en pantalones de pierna ancha",
+    "trend_score": 9.1,
+    "temporada": "todo el año",
+    "categoria": "pantalones",
+    "tienda": "zara"
+  },
+  {
+    "titulo": "Cardigan Largo Punto",
+    "recommendation": "Perfecto para capas en clima frío",
+    "trend_score": 8.6,
+    "temporada": "frio",
+    "categoria": "tejidos",
+    "tienda": "hm"
+  },
+  {
+    "titulo": "Blusa Satinada",
+    "recommendation": "Elegante y versátil para ocasiones especiales",
+    "trend_score": 8.4,
+    "temporada": "todo el año",
+    "categoria": "tops",
+    "tienda": "forever21"
+  },
+  {
+    "titulo": "Conjunto Deportivo 3 Piezas",
+    "recommendation": "Athleisure trend, cómodo y moderno",
+    "trend_score": 9.3,
+    "temporada": "todo el año",
+    "categoria": "conjuntos",
+    "tienda": "shein"
+  }
+];
 
 // Sistema de caché simple en memoria
 const cache = new Map<string, { data: any; timestamp: number }>();
