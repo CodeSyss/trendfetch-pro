@@ -332,8 +332,14 @@ serve(async (req) => {
 
         const langLabel = language === 'en' ? 'English' : language === 'zh' ? '中文' : 'Español';
 
-        const systemPrompt = `Eres un analista experto en e-commerce de moda. Devuelve SOLO JSON válido. La explicación/recommendation debe estar en ${langLabel}.`;
-        const userPrompt = `Extrae 15-18 productos reales de ropa de mujer de la URL. Usa baseUrl para resolver imágenes relativas. Mantén los títulos y precios tal como aparecen. recommendation en ${langLabel}.
+        const systemPrompt = `Eres un analista experto en e-commerce de moda. Devuelve SOLO JSON válido. La explicación/recommendation debe estar en ${langLabel}. Es CRÍTICO que cada producto sea ÚNICO y DIFERENTE - no repitas productos similares.`;
+        const userPrompt = `Extrae 20-25 productos ÚNICOS Y DIFERENTES de ropa de mujer de la URL. Usa baseUrl para resolver imágenes relativas. Mantén los títulos y precios tal como aparecen. recommendation en ${langLabel}.
+
+IMPORTANTE: 
+- Cada producto debe ser COMPLETAMENTE DIFERENTE (diferentes estilos, colores, tipos de prenda)
+- Prioriza VARIEDAD sobre cantidad
+- Selecciona los productos con MEJOR trend score y calidad
+- NO incluyas productos duplicados o muy similares
 
 URL: ${url}
 Base URL: ${baseUrl}
@@ -376,7 +382,7 @@ Formato exacto:
         content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
         const parsed = JSON.parse(content);
 
-        const products = (parsed.products || []).slice(0, 18).map((p: any) => ({
+        const products = (parsed.products || []).slice(0, 25).map((p: any) => ({
           title: String(p.title || '').slice(0, 140),
           price: String(p.price || ''),
           colors: Array.isArray(p.colors) ? p.colors : [],
@@ -404,8 +410,24 @@ Formato exacto:
     // Combinar todos los productos
     const allProducts = allResults.flatMap(result => result.products);
 
+    // Deduplicación: eliminar productos con títulos muy similares o imágenes duplicadas
+    const uniqueProducts: any[] = [];
+    const seenTitles = new Set<string>();
+    const seenImages = new Set<string>();
+    
+    for (const product of allProducts) {
+      const normalizedTitle = product.title.toLowerCase().trim().slice(0, 50);
+      const imageUrl = product.image?.toLowerCase();
+      
+      if (!seenTitles.has(normalizedTitle) && (!imageUrl || !seenImages.has(imageUrl))) {
+        uniqueProducts.push(product);
+        seenTitles.add(normalizedTitle);
+        if (imageUrl) seenImages.add(imageUrl);
+      }
+    }
+
     // Mezcla aleatoria
-    const shuffledProducts = allProducts.sort(() => Math.random() - 0.5);
+    const shuffledProducts = uniqueProducts.sort(() => Math.random() - 0.5);
 
     // Recalcular resumen
     const totalProducts = shuffledProducts.length;
